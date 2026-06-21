@@ -1,0 +1,1 @@
+{"name":"rushnur88","owner":{"name":"Ravshan Nuraliev"},"plugins":[{"name":"claimkeep","source":"./plugins/claimkeep","description":"Continuous memory that survives context compaction."}]}

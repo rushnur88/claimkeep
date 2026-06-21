@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Tooling
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Packaging artifacts
+*.tgz
+
+# OS / editor
+.DS_Store
+*.swp
+
+# ClaimKeep build-root marker (internal, not part of the package)
+.buildroot

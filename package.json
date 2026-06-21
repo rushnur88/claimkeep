@@ -1,0 +1,1 @@
+{"name":"claimkeep","version":"0.1.0","description":"Continuous memory for Claude Code context compaction.","license":"MIT","bin":{"claimkeep":"bin/claimkeep.js"},"files":["bin","claimkeep","!claimkeep/**/__pycache__","!claimkeep/**/*.pyc","plugins","README.md","LICENSE"]}

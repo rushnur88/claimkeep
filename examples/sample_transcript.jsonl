@@ -1,0 +1,4 @@
+{"text":"Ship ClaimKeep package Friday [C:80%]"}
+{"message":{"role":"assistant","content":"Use /tmp/claimkeep/brief.json not /tmp/claimkeep/old.json."}}
+{"content":"DECISION: locked package name claimkeep and plugin source ./plugins/claimkeep."}
+{"text":"Trace id abc1234 and obs #1042 stay in the floor."}

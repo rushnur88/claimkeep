@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "claimkeep"
+version = "0.1.0"
+description = "Continuous memory for Claude Code context compaction."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [{name = "Ravshan Nuraliev"}]
+dependencies = []
+
+[project.scripts]
+claimkeep = "claimkeep.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["claimkeep*"]

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "note": "Frozen probe set — pre-registered BEFORE a run. Each probe is one fact whose survival through a compaction round is scored against the brief's claims[]+supplement[]. 'harvester' is the arm expected to retain it (used to attribute LOST probes). These probes line up with examples/sample_transcript.jsonl so you can run the demo end-to-end: claimkeep precompact < event  ->  python score.py <brief.json> probes.example.json",
+  "probes": [
+    { "id": "p1", "text": "Ship ClaimKeep package Friday", "harvester": "calibration" },
+    { "id": "p2", "text": "/tmp/claimkeep/brief.json", "harvester": "regex_floor" },
+    { "id": "p3", "text": "locked the package name and plugin source", "harvester": "regex_floor" },
+    { "id": "p4", "text": "this fact was never stated in the session", "harvester": "calibration" }
+  ]
+}

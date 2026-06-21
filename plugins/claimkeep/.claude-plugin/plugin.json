@@ -1,0 +1,1 @@
+{"name":"claimkeep","version":"0.1.0","description":"Continuous memory that survives context compaction — harvests your agent's own high-signal claims into a verbatim brief and re-injects it after compaction.","author":{"name":"Ravshan Nuraliev"},"$schema":"https://json.schemastore.org/claude-code-plugin-manifest.json"}
