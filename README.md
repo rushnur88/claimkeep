@@ -59,6 +59,19 @@ A memory layer reads your transcript, so it could capture secrets or personal da
 
 Redaction is conservative defense-in-depth, not a guarantee: it targets well-known shapes and will not catch every secret. Do not rely on it as a reason to paste credentials into a session.
 
+## Measuring the effect (control vs treatment)
+
+To A/B the layer over one corpus, run two passes over the same transcripts:
+
+- **treatment** — harvesting on (default),
+- **control** — harvesting off (`CLAIMKEEP_HARVEST=0`), which yields an empty/naive brief.
+
+Set `CLAIMKEEP_PROBE_LOG=<path>` (and optionally `CLAIMKEEP_CORPUS_ID`). Each
+`precompact` then appends one JSONL record — the full reinjected brief plus a
+`harvest_enabled` flag and a `session_id` / `corpus_id` / `ts` header — so a
+scorer can compare the two arms on the same frozen probes. The hot harvest path
+is untouched; this is logging only.
+
 ---
 
 Developed at [PATech Labs](https://patechlabs.com).

@@ -19,6 +19,7 @@ class Config:
     floor_ids: bool = True
     floor_decisions: bool = True
     redact: bool = True
+    harvest_enabled: bool = True
     brief_dir: str = DEFAULT_BRIEF_DIR
 
     @classmethod
@@ -36,6 +37,9 @@ class Config:
         cfg = cls()
         if os.environ.get("CLAIMKEEP_BRIEF_DIR"):
             cfg.brief_dir = os.environ["CLAIMKEEP_BRIEF_DIR"]
+        harvest = os.environ.get("CLAIMKEEP_HARVEST")
+        if harvest is not None and harvest.strip().lower() in ("0", "false", "off", "no"):
+            cfg.harvest_enabled = False
         return cfg
 
     def expanded_brief_dir(self) -> str:

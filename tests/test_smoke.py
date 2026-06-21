@@ -101,5 +101,42 @@ class ClaimKeepSmokeTest(unittest.TestCase):
         self.assertNotIn("sk-abcdEFGH0123456789ijklmnop", brief.to_json())
 
 
+    def test_control_treatment_and_probe_log(self):
+        import os
+        import tempfile
+
+        from claimkeep.cli import _build_brief, _probe_log
+
+        src = {"agent": "x", "session": "s1"}
+        transcript = ["Ship Friday [C:80%]", "see /tmp/x.json"]
+
+        os.environ.pop("CLAIMKEEP_HARVEST", None)
+        treatment = _build_brief(transcript, "2026-01-01T00:00:00Z", src)
+        self.assertTrue(treatment.claims or treatment.supplement)
+
+        os.environ["CLAIMKEEP_HARVEST"] = "0"
+        try:
+            control = _build_brief(transcript, "2026-01-01T00:00:00Z", src)
+            self.assertEqual(control.claims, [])
+            self.assertEqual(control.supplement, [])
+
+            with tempfile.TemporaryDirectory() as d:
+                logp = os.path.join(d, "probe.jsonl")
+                os.environ["CLAIMKEEP_PROBE_LOG"] = logp
+                os.environ["CLAIMKEEP_CORPUS_ID"] = "corpusA"
+                try:
+                    _probe_log(control, src, "2026-01-01T00:00:00Z")
+                    rec = json.loads(open(logp, encoding="utf-8").read().strip())
+                    self.assertEqual(rec["harvest_enabled"], False)
+                    self.assertEqual(rec["corpus_id"], "corpusA")
+                    self.assertEqual(rec["session_id"], "s1")
+                    self.assertIn("brief", rec)
+                finally:
+                    os.environ.pop("CLAIMKEEP_PROBE_LOG", None)
+                    os.environ.pop("CLAIMKEEP_CORPUS_ID", None)
+        finally:
+            os.environ.pop("CLAIMKEEP_HARVEST", None)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -86,14 +86,44 @@ def _build_brief(transcript: List[str], created_utc: str, source: Dict[str, Any]
         transcript = [redact(unit) for unit in transcript]
     claims: List[Claim] = []
     supplements: List[Supplement] = []
-    for name in config.harvesters:
-        harvester = get_harvester(name)()
-        for item in harvester.harvest(transcript, config):
-            if isinstance(item, Claim):
-                claims.append(item)
-            elif isinstance(item, Supplement):
-                supplements.append(item)
+    # harvest_enabled=False yields an empty (naive) brief — the control arm for
+    # a control-vs-treatment evaluation.
+    if getattr(config, "harvest_enabled", True):
+        for name in config.harvesters:
+            harvester = get_harvester(name)()
+            for item in harvester.harvest(transcript, config):
+                if isinstance(item, Claim):
+                    claims.append(item)
+                elif isinstance(item, Supplement):
+                    supplements.append(item)
     return Brief(created_utc=created_utc, source=source, claims=claims, supplement=supplements)
+
+
+def _probe_log(brief: Brief, source: Dict[str, Any], created_utc: str) -> None:
+    """Append one JSONL record per PreCompact when CLAIMKEEP_PROBE_LOG is set.
+
+    Records the full reinjected brief, the harvest_enabled flag, and a
+    session/corpus/timestamp header so control and treatment runs over the same
+    corpus produce machine-distinguishable artifacts. Best-effort; never raises.
+    """
+    path = os.environ.get("CLAIMKEEP_PROBE_LOG")
+    if not path:
+        return
+    try:
+        record = {
+            "ts": created_utc,
+            "session_id": source.get("session"),
+            "corpus_id": os.environ.get("CLAIMKEEP_CORPUS_ID"),
+            "harvest_enabled": bool(getattr(default_config(), "harvest_enabled", True)),
+            "brief": brief.to_dict(),
+        }
+        parent = os.path.dirname(os.path.abspath(path))
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(path, "a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception:
+        return
 
 
 def _cmd_version(_args: argparse.Namespace) -> int:
@@ -128,6 +158,7 @@ def _cmd_precompact(args: argparse.Namespace) -> int:
                 os.makedirs(parent, exist_ok=True)
         with open(out, "w", encoding="utf-8") as handle:
             handle.write(brief.to_json())
+        _probe_log(brief, source, created_utc)
         print(out)
         return 0
     except Exception:
