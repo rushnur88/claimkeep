@@ -74,4 +74,4 @@ is untouched; this is logging only.
 
 ---
 
-Developed at [PATech Labs](https://patechlabs.com).
+Developed by Ravshan Nuraliev.
