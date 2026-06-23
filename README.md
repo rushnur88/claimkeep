@@ -4,6 +4,14 @@ ClaimKeep is a narrow continuous-memory plugin for Claude Code. Before compactio
 
 The hook mechanism is ordinary Claude Code plugin plumbing. The useful idea here is calibration markers as memory, backed by a marker-free floor for ids, paths, and decisions. The frozen brief contract is documented in [docs/BRIEF_SCHEMA.md](docs/BRIEF_SCHEMA.md).
 
+## Paper
+
+This plugin accompanies the paper **"Continuous Memory for Multi-Agent Infrastructure: A Calibration-Density Law for Surviving Context Compaction"** (Ravshan Nuraliev, 2026), published on Zenodo:
+
+https://zenodo.org/records/20819013
+
+The paper reports the defensible results behind ClaimKeep: zero confident-wrong answers across both corpora and both scorers, and a union product-lift over native compaction of +8.3 strict / +16.6 semantic. If you use ClaimKeep, please cite the Zenodo record.
+
 ## Install
 
 Python package:
