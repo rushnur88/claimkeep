@@ -94,6 +94,14 @@ class TopicTest(unittest.TestCase):
         second = harvester.harvest(["I am interested in astronomy."], config)
         self.assertNotEqual(first[0].topic, second[0].topic)
 
+    def test_silent_e_is_restored_in_the_verb_root(self):
+        """`moved` must stem to `move`, or the topic will not match its own infinitive."""
+        harvester = AtomicFactHarvester()
+        config = default_config()
+        past = harvester.harvest(["I moved to Boston in 2019."], config)
+        present = harvester.harvest(["I move to Austin next month."], config)
+        self.assertEqual(past[0].topic, present[0].topic)
+
     def test_different_subjects_do_not_collide(self):
         harvester = AtomicFactHarvester()
         config = default_config()

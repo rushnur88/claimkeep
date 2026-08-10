@@ -171,13 +171,22 @@ def is_factual(sentence: str) -> bool:
         return False
     if _GENERIC_OPENER.search(stripped) or _ADVICE.search(stripped):
         return False
-    if _ASSISTANT_REGISTER.search(stripped) or _HYPOTHETICAL.search(stripped):
+    if _ASSISTANT_REGISTER.search(stripped):
         return False
     if _BOLD_HEAD.match(stripped):
         return False
     personal = bool(_PERSONAL.search(stripped))
     if _LIST_ITEM.match(stripped) and not personal:
         return False
+    concrete_early = bool(_CONCRETE.search(stripped)) or bool(_PROPER.search(stripped))
+    if _HYPOTHETICAL.search(stripped):
+        # A hedge usually wraps a plan, not a fact — but a fact can ride inside
+        # one: "I'm wondering if I should repot my snake plant, which I got from
+        # my sister last month" was dropped whole, and with it the only mention
+        # of the plant. Keep the sentence when it is both the speaker's and
+        # carries something concrete; drop the bare speculation.
+        if not (personal and concrete_early):
+            return False
     head = words[0].casefold().strip("*")
     if head in _IMPERATIVE_HEADS:
         return False
@@ -269,6 +278,11 @@ def _verb_root(token: str) -> str:
                 return stem + "y"
             if suffix in ("ing", "ed") and len(stem) > 2 and stem[-1] == stem[-2]:
                 stem = stem[:-1]  # stopped -> stop
+            # `moved` -> `mov` unless the silent -e is restored, and a root that
+            # does not match its own infinitive breaks topic identity: "I moved
+            # to Boston" would not supersede "I move to Austin".
+            if stem not in _VERBS and (stem + "e") in _VERBS:
+                return stem + "e"
             return stem
     return low
 
@@ -352,8 +366,14 @@ class AtomicFactHarvester(Harvester):
     def harvest(self, transcript: Sequence[str], config: Config) -> List[Claim]:
         items: List[Claim] = []
         seen: Set[str] = set()
+        # A sentence carrying a calibration marker belongs to that harvester,
+        # which also records the stated confidence. Harvesting it twice spends
+        # the brief budget on one fact and loses the confidence on the copy.
+        marker = re.compile(config.calibration_marker_regex)
         for unit in transcript:
             for sentence in split_sentences(str(unit)):
+                if marker.search(sentence):
+                    continue
                 if not is_factual(sentence):
                     continue
                 triple = extract_triple(sentence)

@@ -36,9 +36,12 @@ two columns are read together.
 |---|---|---|---|---|---|
 | raw, session granularity | 0.862 | 0.942 | 0.968 | 0.982 | 100% |
 | raw, turn granularity | 0.864 | 0.922 | 0.952 | 0.976 | 100% |
-| **harvested, `atomic`** | **0.718** | **0.842** | **0.884** | **0.926** | **12.4%** |
+| **harvested, `atomic`** | **0.734** | **0.852** | **0.892** | **0.936** | **12.9%** |
 | harvested, `atomic` + `regex_floor` | 0.738 | 0.852 | 0.888 | 0.926 | 20.2% |
 | harvested, pre-`atomic` harvesters (2026-08-10 baseline) | 0.216 | 0.314 | 0.370 | 0.456 | 7.9% |
+
+The hybrid row was measured before the hedge rule was relaxed. It bought 2 points
+of R@1 for 8 points of volume, so it is not the default.
 
 `raw` scores the BM25 read path directly over the haystack, so it is the ceiling
 this retriever can reach and not a configuration anyone would ship: it stores the
@@ -76,8 +79,8 @@ after the change: evidence coverage **25 of 26** on the first 25 questions.
 ## Reading the gap that is left
 
 The retriever ceiling is 0.982 R@10 with the whole haystack in the index.
-`atomic` reaches 0.926 while storing 12.4% of it — 8x compression for 5.6 points
-of recall. Whether that trade is right depends on what the memory is for: a
+`atomic` reaches 0.936 while storing 12.9% of it — roughly 8x compression for
+4.6 points of recall. Whether that trade is right depends on what the memory is for: a
 brief that has to fit back into a freshly compacted context cannot store the
 haystack, which is the entire reason the budget exists.
 
@@ -87,7 +90,7 @@ of the corpus they index, so a like-for-like reading needs their compression
 number too. Second, retrieval accuracy is not answer accuracy — the QA arm with
 the official judge is the number that settles that, and it has not been run.
 
-Where the remaining 5.6 points sit is measurable rather than guessable: run
+Where the remaining 4.6 points sit is measurable rather than guessable: run
 `diag_evidence.py` and look at `sample_missed_evidence`. The known class is
 verbless assertion ("Congratulations on your degree in Business Administration"),
 which the triple extractor rejects for having no finite verb.

@@ -9,10 +9,25 @@ Atomic fact harvesting. Measured on LongMemEval, all 500 questions.
   anchors keep the sentence; questions, hedges, imperatives, advice lists and
   headings are dropped. Each kept sentence carries a `subject|predicate-root`
   topic, so the supersession chain added in 0.3 finally has something to chain.
-- **Measured: R@10 0.456 → 0.926, R@1 0.216 → 0.718**, at 12.4% of the haystack
+- **Measured: R@10 0.456 → 0.936, R@1 0.216 → 0.734**, at 12.9% of the haystack
   stored. The previous score was not retrieval working: of the 26 turns holding
   the answer, the old harvesters produced items for **zero** of them, so the
   number came from lexical overlap with noise. Evidence coverage is now 25/26.
+- **Fixed: a hedge swallowed the fact riding inside it.** "I'm wondering if I
+  should repot my snake plant, which I got from my sister last month" was dropped
+  whole. A hedged sentence is now kept when it is the speaker's own and carries
+  something concrete; bare speculation is still dropped. Worth 1.0 point of R@10
+  and 1.6 of R@1 for 0.4 points of volume.
+- **Fixed: the verb root dropped a silent `-e`.** `moved` stemmed to `mov`, which
+  never matched its own infinitive, so "I moved to Boston" could not supersede
+  "I move to Austin".
+- **Fixed: a marked sentence was harvested twice.** A sentence carrying a
+  `[C:NN%]` marker now belongs to the calibration harvester alone — collecting it
+  in both spent brief budget on one fact and dropped the stated confidence from
+  the copy.
+- **Changed: rule-extracted claims rank below marked ones in the budget.** The
+  atomic harvester is far more prolific than the others; at equal weight it
+  would crowd paths, ids and decisions out of a 12k brief on agent transcripts.
 - **Fixed: supersession fired on non-functional relations.** "I'm interested in
   the French Resistance" and "I'm interested in astronomy" share a subject and a
   verb but are two facts, not a correction; a quarter of harvested claims were

@@ -39,6 +39,13 @@ W_RECENCY = 0.2
 SUPERSEDED_PENALTY = 0.35
 DEFAULT_CONFIDENCE = 0.5
 
+# A rule-extracted sentence is worth less per character than a statement the
+# agent itself marked with a confidence. Without this the atomic harvester —
+# which produces far more items than the others — would crowd paths, ids and
+# decisions out of the budget on agent transcripts, which is the case the
+# supplement floor exists for.
+RULE_EXTRACTED_WEIGHT = 0.75
+
 
 def _recency(index: int, total: int) -> float:
     if total <= 1:
@@ -51,6 +58,8 @@ def score_claim(claim: Claim, index: int, total: int) -> float:
     score = BASE_CLAIM * (
         W_BASE + W_CONFIDENCE * confidence + W_RECENCY * _recency(index, total)
     )
+    if claim.source_harvester == "atomic" and claim.confidence is None:
+        score *= RULE_EXTRACTED_WEIGHT
     if not claim.is_active:
         score *= SUPERSEDED_PENALTY
     return score

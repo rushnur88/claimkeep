@@ -105,5 +105,31 @@ class BudgetTest(unittest.TestCase):
         self.assertEqual(kept, [i for i in original if i in set(kept)])
 
 
+
+class RuleExtractedWeightTest(unittest.TestCase):
+    def test_a_marked_claim_outranks_a_rule_extracted_one(self):
+        """Otherwise the atomic harvester, which is far more prolific, crowds the
+        supplement floor out of the budget on agent transcripts."""
+        from claimkeep.brief import Supplement
+        from claimkeep.select import score_claim, score_supplement
+
+        atomic = Claim(
+            text="I moved to Austin in June",
+            confidence=None,
+            topic="i|move",
+            source_harvester="atomic",
+        )
+        marked = Claim(
+            text="the bridge is warm",
+            confidence=0.9,
+            topic="bridge",
+            source_harvester="calibration",
+        )
+        path = Supplement(text="/etc/hosts", kind="path", source_harvester="regex_floor")
+
+        self.assertGreater(score_claim(marked, 5, 10), score_claim(atomic, 5, 10))
+        self.assertGreater(score_claim(atomic, 5, 10), score_supplement(path, 5, 10))
+
+
 if __name__ == "__main__":
     unittest.main()
