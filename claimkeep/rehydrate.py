@@ -6,6 +6,11 @@ from collections import defaultdict
 from typing import Dict, List
 
 from .brief import Brief
+from .prompt import marker_instruction
+
+# Reserved topic prefix the lesson harvester writes; kept here as a constant so
+# the renderer does not import a harvester just to know one string.
+LESSON_TOPIC = "lesson"
 
 
 def render(brief: Brief) -> str:
@@ -23,8 +28,14 @@ def render(brief: Brief) -> str:
         confidence = "unknown" if claim.confidence is None else f"{claim.confidence:.2f}"
         return f"- [{confidence}] {claim.text} (topic: {claim.topic}; id: {claim.id})"
 
-    active = _sorted([claim for claim in brief.claims if claim.is_active])
-    superseded = _sorted([claim for claim in brief.claims if not claim.is_active])
+    # Lessons are rules for the next session, not facts about this one, so they
+    # get their own section instead of competing for attention inside Claims.
+    lesson_prefix = LESSON_TOPIC + ":"
+    lessons = [claim for claim in brief.claims if claim.topic.startswith(lesson_prefix)]
+    facts = [claim for claim in brief.claims if not claim.topic.startswith(lesson_prefix)]
+
+    active = _sorted([claim for claim in facts if claim.is_active])
+    superseded = _sorted([claim for claim in facts if not claim.is_active])
 
     lines.append("## Claims")
     if active:
@@ -32,6 +43,12 @@ def render(brief: Brief) -> str:
     else:
         lines.append("- None")
     lines.append("")
+
+    if lessons:
+        lines.append("## Lessons")
+        for claim in lessons:
+            lines.append("- " + claim.text)
+        lines.append("")
 
     # Retracted history is listed separately and never mixed with live facts:
     # a reader must not have to guess which of two conflicting claims holds.
@@ -74,4 +91,13 @@ def render(brief: Brief) -> str:
 
 
 def postcompact_payload(brief: Brief, event: str) -> dict:
-    return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": render(brief)}}
+    """Assemble the context handed back to the agent after a compaction.
+
+    At SessionStart the marker instruction rides along, so a fresh session is
+    taught the convention the calibration harvester depends on. Repeating it on
+    every PostCompact would spend budget teaching what the agent already knows.
+    """
+    context = render(brief)
+    if event == "SessionStart":
+        context = context + "\n" + marker_instruction()
+    return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": context}}

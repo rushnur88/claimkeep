@@ -14,6 +14,9 @@ from . import __version__
 from .brief import Brief, Claim, Supplement
 from .config import default_config
 from .harvesters import get_harvester
+from .harvesters.lessons import LessonHarvester
+from .lessons import Lesson, LessonStore
+from .prompt import marker_instruction
 from .redact import redact
 from .rehydrate import postcompact_payload
 from .select import apply_budget
@@ -81,6 +84,45 @@ def _newest_brief(brief_dir: str) -> Optional[str]:
     return max(paths, key=os.path.getmtime)
 
 
+def _carry_lessons(
+    claims: List[Claim], config: Any, created_utc: str, source: Dict[str, Any]
+) -> List[Claim]:
+    """Persist lessons found this session, then carry the store's newest forward.
+
+    Lessons are the one thing that must not be scoped to a single brief: a rule
+    learned on Monday is worthless if it is gone by Friday. Everything else in
+    the brief describes this session; lessons describe how to work in the next.
+    Failure here is never fatal — a broken store must not cost the whole brief.
+    """
+    if not getattr(config, "lessons_enabled", True):
+        return claims
+    prefix = LessonHarvester.TOPIC + ":"
+    fresh = [claim for claim in claims if claim.topic.startswith(prefix)]
+    try:
+        store = LessonStore(config.expanded_lessons_path())
+        store.append([Lesson(text=claim.text, ts=created_utc, session=source.get("session"))
+                      for claim in fresh])
+        carried = store.recent(int(getattr(config, "lessons_in_brief", 0) or 0))
+    except OSError:
+        return claims
+
+    known = {claim.text.casefold() for claim in fresh}
+    for lesson in carried:
+        if lesson.text.casefold() in known:
+            continue
+        known.add(lesson.text.casefold())
+        claims.append(
+            Claim(
+                text=lesson.text,
+                confidence=None,
+                topic=prefix + lesson.text.casefold()[:40],
+                source_harvester=LessonHarvester.name,
+                ts=lesson.ts,
+            )
+        )
+    return claims
+
+
 def _build_brief(transcript: List[str], created_utc: str, source: Dict[str, Any]) -> Brief:
     config = default_config()
     if getattr(config, "redact", True):
@@ -97,6 +139,7 @@ def _build_brief(transcript: List[str], created_utc: str, source: Dict[str, Any]
                     claims.append(item)
                 elif isinstance(item, Supplement):
                     supplements.append(item)
+        claims = _carry_lessons(claims, config, created_utc, source)
     brief = Brief(created_utc=created_utc, source=source, claims=claims, supplement=supplements)
     # Bound the brief before it is written. Without this the brief is the whole
     # harvest and cannot be re-injected into the window it is meant to restore.
@@ -132,6 +175,36 @@ def _probe_log(brief: Brief, source: Dict[str, Any], created_utc: str) -> None:
 
 def _cmd_version(_args: argparse.Namespace) -> int:
     print(__version__)
+    return 0
+
+
+def _cmd_markers(_args: argparse.Namespace) -> int:
+    """Print the confidence-marker instruction for an agent's system prompt.
+
+    The calibration harvester is only as good as the markers it finds, so the
+    plugin ships the convention instead of assuming it.
+    """
+    print(marker_instruction())
+    return 0
+
+
+def _cmd_lessons(args: argparse.Namespace) -> int:
+    config = default_config()
+    store = LessonStore(config.expanded_lessons_path())
+    if args.add:
+        written = store.append([Lesson(text=args.add, ts=_now_iso())])
+        print("stored" if written else "already stored")
+        return 0
+    lessons = store.recent(args.limit)
+    if args.json:
+        print(json.dumps([lesson.to_dict() for lesson in lessons], ensure_ascii=False, indent=2))
+        return 0
+    if not lessons:
+        print("no lessons stored yet")
+        return 0
+    for lesson in lessons:
+        stamp = lesson.ts or "unknown time"
+        print(f"- [{stamp}] {lesson.text}")
     return 0
 
 
@@ -190,6 +263,15 @@ def build_parser() -> argparse.ArgumentParser:
 
     version = sub.add_parser("version")
     version.set_defaults(func=_cmd_version)
+
+    markers = sub.add_parser("markers", help="print the confidence-marker instruction")
+    markers.set_defaults(func=_cmd_markers)
+
+    lessons = sub.add_parser("lessons", help="list or add durable lessons")
+    lessons.add_argument("--limit", type=int, default=20)
+    lessons.add_argument("--add", help="store a lesson verbatim")
+    lessons.add_argument("--json", action="store_true")
+    lessons.set_defaults(func=_cmd_lessons)
 
     precompact = sub.add_parser("precompact")
     precompact.add_argument("--transcript")

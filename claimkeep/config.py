@@ -9,11 +9,12 @@ from typing import List
 
 
 DEFAULT_BRIEF_DIR = "~/.claude/plugins/data/claimkeep/briefs"
+DEFAULT_LESSONS_PATH = "~/.claude/plugins/data/claimkeep/lessons.jsonl"
 
 
 @dataclass
 class Config:
-    harvesters: List[str] = field(default_factory=lambda: ["calibration", "regex_floor"])
+    harvesters: List[str] = field(default_factory=lambda: ["calibration", "regex_floor", "lessons"])
     # Accepts both the bare marker `[C:80%]` and the extended form that carries
     # an evidence pointer, `[C:80%, basis: read the file]`. The extended form is
     # what long-running agents actually emit; a regex that only matched the bare
@@ -30,6 +31,12 @@ class Config:
     # defeats its own purpose. 0 disables the cap (raw harvest, evaluation only).
     # 12000 chars is roughly the size of a native compaction summary.
     budget_chars: int = 12000
+    # Lessons outlive the session: harvested lessons are appended to an
+    # append-only store and the most recent ones are carried into every later
+    # brief, so a rule learned on Monday is still in front of the agent on Friday.
+    lessons_enabled: bool = True
+    lessons_path: str = DEFAULT_LESSONS_PATH
+    lessons_in_brief: int = 10
 
     @classmethod
     def from_file(cls, path: str) -> "Config":
@@ -55,10 +62,18 @@ class Config:
                 cfg.budget_chars = max(0, int(budget.strip()))
             except ValueError:
                 pass
+        if os.environ.get("CLAIMKEEP_LESSONS_PATH"):
+            cfg.lessons_path = os.environ["CLAIMKEEP_LESSONS_PATH"]
+        lessons = os.environ.get("CLAIMKEEP_LESSONS")
+        if lessons is not None and lessons.strip().lower() in ("0", "false", "off", "no"):
+            cfg.lessons_enabled = False
         return cfg
 
     def expanded_brief_dir(self) -> str:
         return os.path.abspath(os.path.expanduser(self.brief_dir))
+
+    def expanded_lessons_path(self) -> str:
+        return os.path.abspath(os.path.expanduser(self.lessons_path))
 
 
 def default_config() -> Config:
