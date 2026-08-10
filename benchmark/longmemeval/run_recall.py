@@ -45,28 +45,43 @@ def build_raw_docs(inst, granularity):
         else:
             for index, turn in enumerate(session):
                 doc_id = f"{sid}#{index}"
-                docs.append(Document(text=str(turn.get("content", "")), kind="claim", id=doc_id))
+                docs.append(Document(text=str(turn.get("content", "")), kind="claim", id=doc_id, source=str(sid)))
                 owner[doc_id] = str(sid)
     return docs, owner
 
 
-def build_harvested_docs(inst, config):
-    """Documents are whatever ClaimKeep's harvesters keep from the same sessions."""
+def build_harvested_docs(inst, config, group=False):
+    """Documents are whatever ClaimKeep's harvesters keep from the same sessions.
+
+    With group=True the kept items of one session are concatenated into a single
+    document. This matters more than it looks: BM25 length-normalises, so a
+    session split into eighty one-sentence documents competes very differently
+    from the same session as one block — and the raw arm it is compared against
+    is one document per session.
+    """
     docs, owner = [], {}
     for sid, session in zip(inst["haystack_session_ids"], inst["haystack_sessions"]):
         units = [str(turn.get("content", "")) for turn in session]
         seq = 0
+        grouped = []
         for name in config.harvesters:
             for item in get_harvester(name)().harvest(units, config):
+                if group:
+                    grouped.append(item.text)
+                    continue
                 doc_id = f"{sid}#h{seq}"
                 seq += 1
                 kind = getattr(item, "kind", "claim")
-                docs.append(Document(text=item.text, kind=kind, id=doc_id))
+                docs.append(Document(text=item.text, kind=kind, id=doc_id, source=str(sid)))
                 owner[doc_id] = str(sid)
+        if group and grouped:
+            doc_id = str(sid)
+            docs.append(Document(text="\n".join(grouped), kind="claim", id=doc_id))
+            owner[doc_id] = str(sid)
     return docs, owner
 
 
-def evaluate(path, arm, granularity, limit, harvesters=None):
+def evaluate(path, arm, granularity, limit, harvesters=None, group=False):
     config = default_config()
     if harvesters:
         config.harvesters = list(harvesters)
@@ -77,10 +92,12 @@ def evaluate(path, arm, granularity, limit, harvesters=None):
     # scores like the haystack and saves nobody any context, so kept volume is
     # reported next to recall and the two are read together.
     kept_chars, haystack_chars = [], []
+    by_type = {}
 
     for index, inst in enumerate(iter_instances(path)):
         if limit and index >= limit:
             break
+        qtype = str(inst.get("question_type", "unknown"))
         gold = set(str(x) for x in inst.get("answer_session_ids") or [])
         if not gold:
             # Abstention questions have no evidence session; recall is undefined.
@@ -89,7 +106,7 @@ def evaluate(path, arm, granularity, limit, harvesters=None):
         if arm == "raw":
             docs, owner = build_raw_docs(inst, granularity)
         else:
-            docs, owner = build_harvested_docs(inst, config)
+            docs, owner = build_harvested_docs(inst, config, group)
         doc_counts.append(len(docs))
         kept_chars.append(sum(len(d.text) for d in docs))
         haystack_chars.append(sum(len(session_text(sess)) for sess in inst["haystack_sessions"]))
@@ -108,9 +125,15 @@ def evaluate(path, arm, granularity, limit, harvesters=None):
             if sid not in seen_sessions:
                 seen_sessions.append(sid)
         scored += 1
+        bucket = by_type.setdefault(qtype, {"n": 0, "hit10": 0, "hit1": 0})
+        bucket["n"] += 1
         for k in KS:
             if gold & set(seen_sessions[:k]):
                 hits[k] += 1
+        if gold & set(seen_sessions[:10]):
+            bucket["hit10"] += 1
+        if gold & set(seen_sessions[:1]):
+            bucket["hit1"] += 1
 
     doc_counts.sort()
     total_kept, total_hay = sum(kept_chars), sum(haystack_chars)
@@ -125,6 +148,14 @@ def evaluate(path, arm, granularity, limit, harvesters=None):
         "questions_with_empty_corpus": empty_corpus,
         "questions_with_zero_lexical_match": zero_result,
         "median_docs_per_question": doc_counts[len(doc_counts) // 2] if doc_counts else 0,
+        "by_question_type": {
+            t: {
+                "n": v["n"],
+                "R@1": round(v["hit1"] / v["n"], 3),
+                "R@10": round(v["hit10"] / v["n"], 3),
+            }
+            for t, v in sorted(by_type.items())
+        },
         "recall": {f"R@{k}": round(hits[k] / scored, 4) if scored else 0.0 for k in KS},
     }
 
@@ -136,9 +167,10 @@ def main():
     ap.add_argument("--granularity", choices=("session", "turn"), default="session")
     ap.add_argument("--limit", type=int, default=0, help="0 = all 500")
     ap.add_argument("--harvesters", default="", help="comma-separated override, harvested arm only")
+    ap.add_argument("--group", action="store_true", help="one document per session instead of per item")
     args = ap.parse_args()
     names = [n.strip() for n in args.harvesters.split(",") if n.strip()]
-    report = evaluate(args.data, args.arm, args.granularity, args.limit, names)
+    report = evaluate(args.data, args.arm, args.granularity, args.limit, names, args.group)
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
 
 

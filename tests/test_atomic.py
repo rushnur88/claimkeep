@@ -11,6 +11,7 @@ from claimkeep.config import default_config
 from claimkeep.harvesters.atomic import (
     AtomicFactHarvester,
     extract_triple,
+    factual_parts,
     is_factual,
     split_sentences,
 )
@@ -50,6 +51,29 @@ class SelectionTest(unittest.TestCase):
     def test_impersonal_sentence_needs_something_concrete(self):
         self.assertFalse(is_factual("The weather has been quite pleasant lately."))
         self.assertTrue(is_factual("The Boston Marathon takes place in April."))
+
+
+class QuestionCarryingAFactTest(unittest.TestCase):
+    """Most of the remaining LongMemEval recall loss was this one shape."""
+
+    def test_fact_survives_the_question_it_was_asked_with(self):
+        parts = factual_parts(
+            "I'm visiting my sister Emily in Denver soon, and I was wondering "
+            "if you knew any kid-friendly attractions there?"
+        )
+        self.assertTrue(parts)
+        self.assertIn("Emily", parts[0])
+        self.assertNotIn("attractions", " ".join(parts))
+
+    def test_a_pure_question_still_yields_nothing(self):
+        self.assertEqual(factual_parts("What kind of workout would you recommend?"), [])
+        self.assertEqual(factual_parts("Can you recommend a show to watch tonight?"), [])
+
+    def test_a_plain_statement_is_unchanged(self):
+        self.assertEqual(
+            factual_parts("I bought a Fitbit on February 15th."),
+            ["I bought a Fitbit on February 15th."],
+        )
 
 
 class TripleTest(unittest.TestCase):
@@ -109,6 +133,30 @@ class TopicTest(unittest.TestCase):
             ["My dog is a spaniel. My car is a Subaru."], config
         )
         self.assertEqual(len({item.topic for item in items}), 2)
+
+
+class ContextAnchorTest(unittest.TestCase):
+    """44% of long assistant turns yielded nothing, and the questions whose
+    answer lives in one were the worst-scoring category. One opening line per
+    otherwise-empty long turn took that category from 0.821 to 0.929 R@10."""
+
+    ADVICE = (
+        "Yoga is an excellent way to start the day! Here are some poses that can "
+        "help you sleep better. Try Child's Pose to calm your mind. Hold for 5-10 "
+        "breaths on each side. Avoid vigorous practices close to bedtime, and end "
+        "your practice with a relaxing Savasana to quiet your mind and body before "
+        "you go to sleep for the night."
+    )
+
+    def test_a_long_turn_with_no_assertion_keeps_one_topical_line(self):
+        items = AtomicFactHarvester().harvest([self.ADVICE], default_config())
+        self.assertEqual(len(items), 1)
+        self.assertIn("Yoga", items[0].text)
+        self.assertTrue(items[0].topic.startswith("context|"))
+
+    def test_a_short_turn_with_no_assertion_keeps_nothing(self):
+        items = AtomicFactHarvester().harvest(["Try the stairs instead."], default_config())
+        self.assertEqual(items, [])
 
 
 class HarvestTest(unittest.TestCase):

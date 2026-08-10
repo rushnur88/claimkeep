@@ -38,6 +38,7 @@ and it is English-shaped. That is a stated limitation, not a hidden one.
 
 from __future__ import annotations
 
+import os
 import re
 from typing import List, Optional, Sequence, Set, Tuple
 
@@ -152,6 +153,16 @@ _CONCRETE = re.compile(
 
 _PROPER = re.compile(r"(?<!^)(?<![.!?]\s)\b[A-Z][a-zA-Z]{2,}\b")
 
+# A question addressed to the assistant, or the interrogative half of a sentence
+# that also states a fact. "I'm visiting my sister Emily in Denver, do you know
+# any kid-friendly attractions?" is one sentence carrying both.
+_INTERROGATIVE = re.compile(
+    r"(?i)^\s*(what|where|when|which|who|whom|whose|why|how|do|does|did|can|could|"
+    r"would|should|is|are|was|were|have|has|any|please)\b|\b(do|did|can|could|would|"
+    r"will|have)\s+you\b|\bany\s+(suggestions|ideas|recommendations|tips)\b"
+)
+_CLAUSE_SPLIT = re.compile(r"\s*(?:[,;]|\band\b|\bbut\b|\bso\b)\s+")
+
 MIN_TOKENS = 4
 MAX_TOKENS = 45
 _WORD = re.compile(r"[A-Za-z0-9']+")
@@ -198,6 +209,30 @@ def is_factual(sentence: str) -> bool:
     # Personal statements stand on their own. An impersonal sentence has to
     # carry something concrete — a date, a quantity, a name — to earn its place.
     return personal or concrete
+
+
+def factual_parts(sentence: str) -> List[str]:
+    """Assertions inside a sentence, including one that ends in a question mark.
+
+    People state facts and ask about them in a single breath: "I adopted a
+    rescue dog last month, any tips for crate training?" Dropping the sentence
+    for its question mark discarded the only mention of the dog — measured on
+    LongMemEval, that class accounted for most of the remaining recall loss.
+    """
+    stripped = sentence.strip()
+    if not stripped.endswith("?"):
+        return [stripped] if is_factual(stripped) else []
+    body = stripped.rstrip("?").strip()
+    parts = [p.strip() for p in _CLAUSE_SPLIT.split(body) if p.strip()]
+    if len(parts) < 2:
+        return []
+    kept = []
+    for part in parts:
+        if _INTERROGATIVE.search(part):
+            continue
+        if is_factual(part):
+            kept.append(part)
+    return kept
 
 
 # --- triple extraction ------------------------------------------------------
@@ -358,6 +393,22 @@ def _topic(subject: str, predicate: str, obj: str = "") -> str:
     return subject_key + "|" + root + ("|" + head if head else "")
 
 
+# A long assistant answer that yields no assertion still names its subject in
+# the opening line - "Yoga is an excellent way to start the day", "Foam rolling
+# is an excellent addition to your routine". Measured on LongMemEval, 44% of
+# long assistant turns harvested nothing at all, and the questions whose answer
+# lives in an assistant turn were the worst-scoring category. Keeping one
+# topical anchor per otherwise-empty long turn costs one sentence and restores
+# the lexical handle.
+_ANCHOR_MODE = os.environ.get("CLAIMKEEP_CONTEXT_ANCHOR", "1").strip().lower()
+CONTEXT_ANCHOR = _ANCHOR_MODE not in ("0", "false", "off")
+# "always" also anchors long turns that did yield an assertion, on the theory
+# that the opening line names the subject while the kept sentences discuss it.
+ANCHOR_ALWAYS = _ANCHOR_MODE == "always"
+ANCHOR_MIN_CHARS = 200
+ANCHOR_MAX_CHARS = 220
+
+
 class AtomicFactHarvester(Harvester):
     """Keep asserted facts, one per sentence, topicised for supersession."""
 
@@ -371,27 +422,51 @@ class AtomicFactHarvester(Harvester):
         # the brief budget on one fact and loses the confidence on the copy.
         marker = re.compile(config.calibration_marker_regex)
         for unit in transcript:
+            before = len(items)
             for sentence in split_sentences(str(unit)):
                 if marker.search(sentence):
                     continue
-                if not is_factual(sentence):
-                    continue
-                triple = extract_triple(sentence)
-                if triple is None:
-                    continue
-                subject, predicate, obj = triple
-                text = sentence.strip()
-                key = normalize(text)
-                if key in seen:
-                    continue
-                seen.add(key)
-                items.append(
-                    Claim(
-                        text=text,
-                        confidence=None,
-                        topic=_topic(subject, predicate, obj),
-                        source_harvester=self.name,
-                        source_span=None,
+                for text in factual_parts(sentence):
+                    triple = extract_triple(text)
+                    if triple is None:
+                        continue
+                    subject, predicate, obj = triple
+                    key = normalize(text)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    items.append(
+                        Claim(
+                            text=text,
+                            confidence=None,
+                            topic=_topic(subject, predicate, obj),
+                            source_harvester=self.name,
+                            source_span=None,
+                        )
                     )
-                )
+            if CONTEXT_ANCHOR and (ANCHOR_ALWAYS or len(items) == before):
+                anchor = self._anchor(str(unit))
+                if anchor and normalize(anchor) not in seen:
+                    seen.add(normalize(anchor))
+                    items.append(
+                        Claim(
+                            text=anchor,
+                            confidence=None,
+                            topic="context|" + (_object_head(anchor) or "turn"),
+                            source_harvester=self.name,
+                            source_span=None,
+                        )
+                    )
         return items
+
+    @staticmethod
+    def _anchor(unit: str) -> Optional[str]:
+        """Opening sentence of a long turn that produced no assertion."""
+        if len(unit) < ANCHOR_MIN_CHARS:
+            return None
+        for sentence in split_sentences(unit):
+            text = sentence.strip()
+            if len(_tokens(text)) < MIN_TOKENS or _LIST_ITEM.match(text):
+                continue
+            return text[:ANCHOR_MAX_CHARS]
+        return None

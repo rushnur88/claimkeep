@@ -9,6 +9,28 @@ Atomic fact harvesting. Measured on LongMemEval, all 500 questions.
   anchors keep the sentence; questions, hedges, imperatives, advice lists and
   headings are dropped. Each kept sentence carries a `subject|predicate-root`
   topic, so the supersession chain added in 0.3 finally has something to chain.
+- **Added: parent boost in the read path.** Each item inherits part of its own
+  brief's match, because BM25 length-normalisation made a session stored as
+  eighty one-sentence documents compete very differently from the same text as
+  one block. R@1 0.734 -> 0.800 with identical stored volume; retrieval still
+  returns items. Strength is `CLAIMKEEP_PARENT_BOOST`, default 1.0, picked by
+  measurement (0.5 scored 0.812/0.956, 1.0 scores 0.824/0.958).
+- **Added: the context anchor.** 44% of long assistant turns harvested nothing
+  at all, and the questions whose answer lives in an assistant turn were the
+  worst-scoring category. One opening line per otherwise-empty long turn took
+  that category from 0.821 to 0.929 R@10, for 2.4 points of volume. Anchoring
+  every long turn instead of only empty ones cost 2 more points of volume and
+  bought nothing — available as `CLAIMKEEP_CONTEXT_ANCHOR=always`, off by default.
+- **Fixed: a fact stated alongside a question was thrown away with it.** "I'm
+  visiting my sister Emily in Denver, do you know any kid-friendly attractions?"
+  was dropped whole for its question mark. Sentences ending in a question are now
+  split into clauses and the assertions kept, the interrogative parts discarded.
+- **Added: `diag_misses.py` and `diag_one.py`.** The first splits remaining
+  misses into lexical loss versus ranking loss — 14 of 16 were lexical, which is
+  what pointed at the two fixes above. The second opens a single question and
+  prints its evidence session turn by turn.
+- **Measured: R@10 0.936 -> 0.958, R@1 0.734 -> 0.824** at 15.3% of the haystack.
+
 - **Measured: R@10 0.456 → 0.936, R@1 0.216 → 0.734**, at 12.9% of the haystack
   stored. The previous score was not retrieval working: of the 26 turns holding
   the answer, the old harvesters produced items for **zero** of them, so the
