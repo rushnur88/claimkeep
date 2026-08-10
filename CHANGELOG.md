@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+- **Fixed: the read path was partially blind in Russian.** The tokenizer matched
+  `[a-z0-9]+`, so Cyrillic text contributed no tokens at all. Measured on 300
+  real lesson records (74% Cyrillic): R@1 0.513 -> 0.893, R@10 0.757 -> 0.980,
+  and the share of queries returning nothing went 15.3% -> 0. The "before"
+  column is not zero because an engineering corpus carries hashes, versions and
+  English terms — the retriever found documents through those fragments while
+  missing everything phrased purely in Russian. `benchmark/russian_recall.py`
+  reproduces both arms over the same corpus.
+- **Added: the retraction / external-correction harvester.** Keeps lines that
+  overturn something, from the agent and from anyone else, and ranks them above
+  marked claims — after compaction an agent restates whatever survived with
+  undiminished confidence, so a refuted claim outliving its refutation is the one
+  failure a memory layer must not produce. Harvesters now accept `(role, text)`
+  pairs as well as plain strings, because in a multi-agent setup a correction
+  from another agent arrives as a *user* turn and an assistant-only pass loses it.
+
 Atomic fact harvesting. Measured on LongMemEval, all 500 questions.
 
 - **Added: the `atomic` harvester.** Selection now asks whether a person asserted
