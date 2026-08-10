@@ -34,18 +34,25 @@ def session_text(session):
     return "\n".join(f"{turn.get('role', '')}: {turn.get('content', '')}" for turn in session)
 
 
+def _dates(inst):
+    dates = inst.get("haystack_dates") or []
+    return {str(sid): (dates[i] if i < len(dates) else None)
+            for i, sid in enumerate(inst["haystack_session_ids"])}
+
+
 def build_raw_docs(inst, granularity):
     """One document per session, or one per turn, tagged with its session id."""
     docs, owner = [], {}
+    stamps = _dates(inst)
     for sid, session in zip(inst["haystack_session_ids"], inst["haystack_sessions"]):
         if granularity == "session":
             doc_id = str(sid)
-            docs.append(Document(text=session_text(session), kind="claim", id=doc_id))
+            docs.append(Document(text=session_text(session), kind="claim", id=doc_id, ts=stamps.get(str(sid))))
             owner[doc_id] = str(sid)
         else:
             for index, turn in enumerate(session):
                 doc_id = f"{sid}#{index}"
-                docs.append(Document(text=str(turn.get("content", "")), kind="claim", id=doc_id, source=str(sid)))
+                docs.append(Document(text=str(turn.get("content", "")), kind="claim", id=doc_id, source=str(sid), ts=stamps.get(str(sid))))
                 owner[doc_id] = str(sid)
     return docs, owner
 
@@ -60,6 +67,7 @@ def build_harvested_docs(inst, config, group=False):
     is one document per session.
     """
     docs, owner = [], {}
+    stamps = _dates(inst)
     for sid, session in zip(inst["haystack_session_ids"], inst["haystack_sessions"]):
         units = [str(turn.get("content", "")) for turn in session]
         seq = 0
@@ -72,11 +80,11 @@ def build_harvested_docs(inst, config, group=False):
                 doc_id = f"{sid}#h{seq}"
                 seq += 1
                 kind = getattr(item, "kind", "claim")
-                docs.append(Document(text=item.text, kind=kind, id=doc_id, source=str(sid)))
+                docs.append(Document(text=item.text, kind=kind, id=doc_id, source=str(sid), ts=stamps.get(str(sid))))
                 owner[doc_id] = str(sid)
         if group and grouped:
             doc_id = str(sid)
-            docs.append(Document(text="\n".join(grouped), kind="claim", id=doc_id))
+            docs.append(Document(text="\n".join(grouped), kind="claim", id=doc_id, ts=stamps.get(str(sid))))
             owner[doc_id] = str(sid)
     return docs, owner
 

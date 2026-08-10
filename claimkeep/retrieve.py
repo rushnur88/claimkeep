@@ -38,7 +38,7 @@ B = 0.75
 # and must not outrank the fact that replaced it.
 KIND_BOOST = {"lesson": 1.4, "claim": 1.0, "decision": 1.0, "id": 0.9, "path": 0.85}
 SUPERSEDED_BOOST = 0.4
-RECENCY_BOOST = 0.25
+RECENCY_BOOST = float(os.environ.get("CLAIMKEEP_RECENCY_BOOST", "0.25"))
 
 # How much of the parent brief's own match feeds into each of its items.
 #
@@ -55,9 +55,61 @@ PARENT_BOOST = float(os.environ.get("CLAIMKEEP_PARENT_BOOST", "1.0"))
 
 TOKEN_RE = re.compile(r"[a-z0-9]+")
 
+_MONTHS = ("january", "february", "march", "april", "may", "june", "july",
+           "august", "september", "october", "november", "december")
+_WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday",
+             "saturday", "sunday")
+_ISO_DATE = re.compile(r"(\d{4})[-/](\d{2})[-/](\d{2})")
+
 
 def tokenize(text: str) -> List[str]:
     return TOKEN_RE.findall(text.casefold())
+
+
+# Off by default, and that is a measured decision rather than caution. Spelling
+# the stamp out lifted temporal-reasoning 0.955 -> 0.962 but cost multi-session
+# 0.977 -> 0.962, for a net R@10 of 0.954 against 0.958 without it. Narrowing to
+# the month alone did not rescue it (0.952). The reason is visible in the data:
+# LongMemEval's haystack spans one year, so the year token is shared by every
+# document and the month is shared by a twelfth of them — dilution, not signal.
+# On a corpus that spans several years this may well pay; the mechanism stays
+# behind CLAIMKEEP_DATE_TOKENS=full|month so the next person can re-measure
+# instead of re-implementing.
+DATE_TOKENS = os.environ.get("CLAIMKEEP_DATE_TOKENS", "off").strip().lower()
+
+
+def date_tokens(ts: Optional[str]) -> List[str]:
+    """Spell a timestamp out so lexical search can match on it.
+
+    "When did I start the new job?" and "what did I do last March" are answered
+    by a date the item carries as metadata, never as text. Indexing the stamp in
+    words — year, month name, weekday — puts it inside reach of the same BM25
+    pass that handles everything else, at the cost of three tokens per item.
+    """
+    if not ts:
+        return []
+    match = _ISO_DATE.search(str(ts))
+    if not match:
+        return []
+    if DATE_TOKENS in ("0", "off", "none"):
+        return []
+    year, month, day = match.groups()
+    # The year is identical across a single corpus, so indexing it adds a term
+    # every document shares — pure dilution. "month" keeps the discriminating
+    # part only.
+    out = [] if DATE_TOKENS == "month" else [year]
+    index = int(month)
+    if 1 <= index <= 12:
+        out.append(_MONTHS[index - 1])
+    if DATE_TOKENS != "month":
+        try:
+            import datetime
+
+            weekday = datetime.date(int(year), index, int(day)).weekday()
+            out.append(_WEEKDAYS[weekday])
+        except (ValueError, TypeError):
+            pass
+    return out
 
 
 @dataclass
@@ -72,7 +124,7 @@ class Document:
 
     def __post_init__(self) -> None:
         if not self.tokens:
-            self.tokens = tokenize(self.text)
+            self.tokens = tokenize(self.text) + date_tokens(self.ts)
 
 
 def load_corpus(config: Any) -> List[Document]:

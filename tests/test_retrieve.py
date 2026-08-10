@@ -124,5 +124,47 @@ class CorpusTest(unittest.TestCase):
             self.assertEqual(recall("anything", config), [])
 
 
+
+class DateTokenTest(unittest.TestCase):
+    """The mechanism, not the default.
+
+    Spelling stamps out is off by default because on a one-year corpus it cost
+    more than it bought (R@10 0.954 against 0.958). The code stays because on a
+    corpus spanning several years the trade may invert, and re-measuring is
+    cheaper than re-implementing.
+    """
+
+    def setUp(self):
+        from claimkeep import retrieve
+
+        self.retrieve = retrieve
+        self.previous = retrieve.DATE_TOKENS
+        retrieve.DATE_TOKENS = "full"
+
+    def tearDown(self):
+        self.retrieve.DATE_TOKENS = self.previous
+
+    def test_a_timestamp_is_spelled_out_for_lexical_match(self):
+        date_tokens = self.retrieve.date_tokens
+        self.assertEqual(date_tokens("2023/05/20 (Sat) 02:21"), ["2023", "may", "saturday"])
+        self.assertEqual(date_tokens("2026-08-10T18:00:00Z"), ["2026", "august", "monday"])
+        self.assertEqual(date_tokens(None), [])
+        self.assertEqual(date_tokens("no date here"), [])
+
+        doc = self.retrieve.Document(
+            text="I adopted a dog", kind="claim", id="x", ts="2023/05/20 (Sat) 02:21"
+        )
+        self.assertIn("may", doc.tokens)
+        self.assertIn("adopted", doc.tokens)
+
+    def test_month_mode_drops_the_shared_year(self):
+        self.retrieve.DATE_TOKENS = "month"
+        self.assertEqual(self.retrieve.date_tokens("2023/05/20 (Sat) 02:21"), ["may"])
+
+    def test_off_by_default_yields_nothing(self):
+        self.retrieve.DATE_TOKENS = "off"
+        self.assertEqual(self.retrieve.date_tokens("2023/05/20 (Sat) 02:21"), [])
+
+
 if __name__ == "__main__":
     unittest.main()

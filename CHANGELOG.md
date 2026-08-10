@@ -30,6 +30,15 @@ Atomic fact harvesting. Measured on LongMemEval, all 500 questions.
   what pointed at the two fixes above. The second opens a single question and
   prints its evidence session turn by turn.
 - **Measured: R@10 0.936 -> 0.958, R@1 0.734 -> 0.824** at 15.3% of the haystack.
+- **Added, off by default: timestamp indexing** (`CLAIMKEEP_DATE_TOKENS`). A date
+  lives in metadata, never in text, so a "last March" question cannot match it.
+  Spelling it out lifted temporal-reasoning 0.955 -> 0.962 and cost multi-session
+  0.977 -> 0.962, netting 0.954 against 0.958. LongMemEval spans one year, so the
+  year token is shared by every document — dilution rather than signal. Kept
+  behind the flag with its numbers, for corpora that span more.
+- **Added, off by default: entity names in the anchor** (`CLAIMKEEP_ANCHOR_NAMES`).
+  R@5 0.934 -> 0.942 but R@10 0.958 -> 0.956 and preference 0.800 -> 0.767, for
+  1.1 points more volume. Sharper head, blunter tail — the wrong trade here.
 
 - **Measured: R@10 0.456 → 0.936, R@1 0.216 → 0.734**, at 12.9% of the haystack
   stored. The previous score was not retrieval working: of the 26 turns holding

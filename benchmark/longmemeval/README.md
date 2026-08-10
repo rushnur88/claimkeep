@@ -116,6 +116,27 @@ Going from 0.936 to 0.958 took three changes, each measured on its own:
    and bought nothing, so it is off by default (`CLAIMKEEP_CONTEXT_ANCHOR=always`
    enables it).
 
+## Two things that did not work
+
+Both are kept in the tree behind a flag, with their numbers, because a negative
+result someone can re-measure is worth more than one they have to rediscover.
+
+**Indexing the timestamp** (`CLAIMKEEP_DATE_TOKENS=full|month`, default off). A
+date lives in metadata, never in the text, so "what did I do last March" cannot
+match it. Spelling the stamp out in words lifted temporal-reasoning 0.955 ->
+0.962 — and cost multi-session 0.977 -> 0.962, netting R@10 0.954 against 0.958
+without it. Narrowing to the month alone scored 0.952. The reason is in the
+corpus: LongMemEval's haystack spans a single year, so the year token is shared
+by every document and the month by a twelfth of them. That is dilution, not
+signal. On a corpus spanning several years the trade may well invert.
+
+**Naming entities in the anchor** (`CLAIMKEEP_ANCHOR_NAMES=1`, default off).
+Appending the distinct proper nouns of a long answer to its anchor line sharpened
+the head of the ranking — R@5 0.934 -> 0.942 — while R@10 slipped 0.958 -> 0.956
+and preference fell 0.800 -> 0.767, for 1.1 points more volume. Sharper at the
+top, blunter in the tail, which is the wrong trade for a memory whose job is to
+not miss.
+
 ## Reading the gap that is left
 
 The retriever ceiling is 0.982 R@10 with the whole haystack in the index.

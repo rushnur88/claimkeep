@@ -407,6 +407,15 @@ CONTEXT_ANCHOR = _ANCHOR_MODE not in ("0", "false", "off")
 ANCHOR_ALWAYS = _ANCHOR_MODE == "always"
 ANCHOR_MIN_CHARS = 200
 ANCHOR_MAX_CHARS = 220
+# Long answers name things the opening line does not: product models, place
+# names, people. Appending the distinct names keeps a lexical handle on them
+# without storing the list they were embedded in. Measured: R@5 0.934 -> 0.942,
+# but R@10 0.958 -> 0.956 and preference 0.800 -> 0.767, for 1.1 points more
+# volume. It sharpens the top of the ranking and blunts the tail, which is the
+# wrong trade for a memory whose job is not to miss. Off by default.
+ANCHOR_NAMES = os.environ.get("CLAIMKEEP_ANCHOR_NAMES", "0") not in ("0", "false", "off")
+ANCHOR_NAME_LIMIT = 8
+_NAME_RE = re.compile(r"\b(?:[A-Z][A-Za-z]+(?:-[A-Z0-9][A-Za-z0-9]*)?|[A-Z]{2,}[0-9]*[A-Za-z0-9-]*)\b")
 
 
 class AtomicFactHarvester(Harvester):
@@ -468,5 +477,18 @@ class AtomicFactHarvester(Harvester):
             text = sentence.strip()
             if len(_tokens(text)) < MIN_TOKENS or _LIST_ITEM.match(text):
                 continue
-            return text[:ANCHOR_MAX_CHARS]
+            head = text[:ANCHOR_MAX_CHARS]
+            if not ANCHOR_NAMES:
+                return head
+            names, seen_names = [], set()
+            for match in _NAME_RE.finditer(unit):
+                token = match.group(0)
+                low = token.casefold()
+                if low in seen_names or low in head.casefold():
+                    continue
+                seen_names.add(low)
+                names.append(token)
+                if len(names) >= ANCHOR_NAME_LIMIT:
+                    break
+            return head + (" | " + ", ".join(names) if names else "")
         return None
