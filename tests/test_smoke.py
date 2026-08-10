@@ -11,6 +11,23 @@ from claimkeep.rehydrate import postcompact_payload
 
 
 class ClaimKeepSmokeTest(unittest.TestCase):
+    def test_marker_with_basis_is_harvested(self):
+        """Extended marker `[C:80%, basis: ...]` must harvest, not silently miss.
+
+        Regression guard: the shipped regex once required the marker to close
+        immediately after the percent sign, so every transcript using the
+        evidence-carrying form produced zero claims — a silent zero that looked
+        exactly like an honest one.
+        """
+        harvester = CalibrationHarvester()
+        config = default_config()
+        for unit in ("Ship on Friday [C:80%]",
+                     "Ship on Friday [C:80%, basis: read the release notes]"):
+            claims = harvester.harvest([unit], config)
+            self.assertEqual(len(claims), 1, "not harvested: %r" % unit)
+            self.assertEqual(claims[0].confidence, 0.8)
+            self.assertEqual(claims[0].text, "Ship on Friday")
+
     def test_zero_markers_valid_brief_with_floor(self):
         transcript = ["Use /tmp/claimkeep.json not /tmp/other.json."]
         supplement = RegexFloorHarvester().harvest(transcript, default_config())

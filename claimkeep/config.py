@@ -14,7 +14,11 @@ DEFAULT_BRIEF_DIR = "~/.claude/plugins/data/claimkeep/briefs"
 @dataclass
 class Config:
     harvesters: List[str] = field(default_factory=lambda: ["calibration", "regex_floor"])
-    calibration_marker_regex: str = r"\[C:\s*(\d{1,3})\s*%\]"
+    # Accepts both the bare marker `[C:80%]` and the extended form that carries
+    # an evidence pointer, `[C:80%, basis: read the file]`. The extended form is
+    # what long-running agents actually emit; a regex that only matched the bare
+    # form silently harvested zero claims from real transcripts.
+    calibration_marker_regex: str = r"\[C:\s*(\d{1,3})\s*%[^\]]*\]"
     floor_paths: bool = True
     floor_ids: bool = True
     floor_decisions: bool = True
