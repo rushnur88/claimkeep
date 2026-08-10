@@ -66,11 +66,17 @@ def build_harvested_docs(inst, config):
     return docs, owner
 
 
-def evaluate(path, arm, granularity, limit):
+def evaluate(path, arm, granularity, limit, harvesters=None):
     config = default_config()
+    if harvesters:
+        config.harvesters = list(harvesters)
     hits = {k: 0 for k in KS}
     scored = skipped_abstention = empty_corpus = zero_result = 0
     doc_counts = []
+    # Recall alone is only half the claim. A memory layer that keeps everything
+    # scores like the haystack and saves nobody any context, so kept volume is
+    # reported next to recall and the two are read together.
+    kept_chars, haystack_chars = [], []
 
     for index, inst in enumerate(iter_instances(path)):
         if limit and index >= limit:
@@ -85,6 +91,8 @@ def evaluate(path, arm, granularity, limit):
         else:
             docs, owner = build_harvested_docs(inst, config)
         doc_counts.append(len(docs))
+        kept_chars.append(sum(len(d.text) for d in docs))
+        haystack_chars.append(sum(len(session_text(sess)) for sess in inst["haystack_sessions"]))
         if not docs:
             empty_corpus += 1
             scored += 1
@@ -105,7 +113,11 @@ def evaluate(path, arm, granularity, limit):
                 hits[k] += 1
 
     doc_counts.sort()
+    total_kept, total_hay = sum(kept_chars), sum(haystack_chars)
     return {
+        "harvesters": list(config.harvesters) if arm == "harvested" else None,
+        "kept_chars_share_of_haystack": round(total_kept / total_hay, 4) if total_hay else 0.0,
+        "median_kept_chars_per_question": sorted(kept_chars)[len(kept_chars) // 2] if kept_chars else 0,
         "arm": arm,
         "granularity": granularity,
         "scored_questions": scored,
@@ -123,8 +135,10 @@ def main():
     ap.add_argument("--arm", choices=("raw", "harvested"), default="raw")
     ap.add_argument("--granularity", choices=("session", "turn"), default="session")
     ap.add_argument("--limit", type=int, default=0, help="0 = all 500")
+    ap.add_argument("--harvesters", default="", help="comma-separated override, harvested arm only")
     args = ap.parse_args()
-    report = evaluate(args.data, args.arm, args.granularity, args.limit)
+    names = [n.strip() for n in args.harvesters.split(",") if n.strip()]
+    report = evaluate(args.data, args.arm, args.granularity, args.limit, names)
     print(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True))
 
 

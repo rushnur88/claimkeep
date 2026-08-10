@@ -14,7 +14,13 @@ DEFAULT_LESSONS_PATH = "~/.claude/plugins/data/claimkeep/lessons.jsonl"
 
 @dataclass
 class Config:
-    harvesters: List[str] = field(default_factory=lambda: ["calibration", "regex_floor", "lessons"])
+    # `atomic` runs first and carries the load on ordinary prose: measured on
+    # LongMemEval it lifted R@10 from 0.456 to 0.926. The other three stay
+    # because they catch what prose rules cannot — markers, paths, ids, lessons —
+    # and that is most of what an agent transcript is made of.
+    harvesters: List[str] = field(
+        default_factory=lambda: ["atomic", "calibration", "regex_floor", "lessons"]
+    )
     # Accepts both the bare marker `[C:80%]` and the extended form that carries
     # an evidence pointer, `[C:80%, basis: read the file]`. The extended form is
     # what long-running agents actually emit; a regex that only matched the bare

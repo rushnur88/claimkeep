@@ -20,3 +20,7 @@ dist/
 
 # ClaimKeep build-root marker (internal, not part of the package)
 .buildroot
+benchmark/longmemeval/data
+*.bak-*
+*.pre-attribution-*
+__pycache__/

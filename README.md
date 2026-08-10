@@ -20,6 +20,12 @@ floor rather than a total. Loss is graded on the fleet side only — the Codex s
 compactions and claims but does not classify a zero. Measurement windows are 19 and 8 days, ending
 2026-08-10; the mechanism has been running longer than the instrumentation that counts it.
 
+Read the figures above as a property of this setup rather than of the tool on its own: every agent
+measured here already carries calibration markers in its system prompt, and marker density is what
+the mechanism feeds on. A clean install, with no markers in the prompt, is a different environment;
+that second figure is being measured separately and is not in this README yet. Until it is, treat
+these numbers as an instrumented-fleet result, not as what a fresh install should expect.
+
 Method and defensible lift numbers are in the paper, *"Continuous Memory for Multi-Agent
 Infrastructure: A Calibration-Density Law for Surviving Context Compaction"* (Ravshan Nuraliev,
 2026) — <https://zenodo.org/records/20819013>. Please cite the Zenodo record if you use ClaimKeep.
