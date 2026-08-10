@@ -61,16 +61,19 @@ def render(brief: Brief) -> str:
     grouped: Dict[str, List[str]] = defaultdict(list)
     for item in brief.supplement:
         grouped[item.kind].append(item.text)
-    lines.append("## Supplement")
-    for kind in ("id", "path", "decision"):
-        lines.append(f"### {kind}")
-        values = grouped.get(kind, [])
-        if values:
+    # Empty kinds are omitted rather than rendered as "None". The brief is text
+    # the agent reads after compaction, so a placeholder is not neutral: it
+    # spends context to say nothing, and "path: None" reads as a finding.
+    if any(grouped.get(kind) for kind in ("id", "path", "decision")):
+        lines.append("## Supplement")
+        for kind in ("id", "path", "decision"):
+            values = grouped.get(kind, [])
+            if not values:
+                continue
+            lines.append(f"### {kind}")
             for value in values:
                 lines.append("- " + value)
-        else:
-            lines.append("- None")
-    lines.append("")
+        lines.append("")
 
     if brief.open_threads:
         lines.append("## Open Threads")

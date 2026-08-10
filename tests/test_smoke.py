@@ -7,7 +7,28 @@ from claimkeep.brief import Brief, Claim, Supplement, make_id
 from claimkeep.config import default_config
 from claimkeep.harvesters.calibration import CalibrationHarvester
 from claimkeep.harvesters.regex_floor import RegexFloorHarvester
-from claimkeep.rehydrate import postcompact_payload
+from claimkeep.rehydrate import postcompact_payload, render
+
+
+class SupplementRenderingTest(unittest.TestCase):
+    """An empty section must be absent, not rendered as "None".
+
+    Found by installing the plugin as an outsider would and reading its first
+    output: every brief without a path printed `### path` / `- None`, which
+    spends context to say nothing and reads like a finding rather than a gap.
+    """
+
+    def test_empty_kinds_are_omitted(self):
+        brief = Brief(source="s")
+        brief.add_supplement(Supplement(text="379ec48", kind="id", source_harvester="regex_floor"))
+        text = render(brief)
+        supplement = text.split("## Supplement", 1)[1]
+        self.assertIn("### id", supplement)
+        self.assertNotIn("### path", supplement)
+        self.assertNotIn("- None", supplement)
+
+    def test_section_disappears_when_nothing_was_collected(self):
+        self.assertNotIn("## Supplement", render(Brief(source="s")))
 
 
 class ClaimKeepSmokeTest(unittest.TestCase):
