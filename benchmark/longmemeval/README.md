@@ -74,7 +74,8 @@ something — first-person anchor, or a named entity or dated quantity — and d
 questions, hedges, imperatives, advice lists and headings. Each kept sentence
 gets a `subject|predicate-root` topic so a later statement on a functional
 relation supersedes the earlier one instead of sitting beside it. Same diagnostic
-after the change: evidence coverage **25 of 26** on the first 25 questions.
+after the change: evidence coverage **25 of 26** on the first 25 questions, and
+**50 of 51** over the first 50 (25,024 turns, 59.4% of turns kept).
 
 ## Reading the gap that is left
 
@@ -91,6 +92,9 @@ number too. Second, retrieval accuracy is not answer accuracy — the QA arm wit
 the official judge is the number that settles that, and it has not been run.
 
 Where the remaining 4.6 points sit is measurable rather than guessable: run
-`diag_evidence.py` and look at `sample_missed_evidence`. The known class is
-verbless assertion ("Congratulations on your degree in Business Administration"),
-which the triple extractor rejects for having no finite verb.
+`diag_evidence.py` and look at `sample_missed_evidence`. At 50 questions exactly
+one evidence turn is missed, and it is the known class — verbless assertion
+("Congratulations on your degree in Business Administration!"), which the triple
+extractor rejects for having no finite verb. Note that near-total evidence
+coverage does not imply near-total recall: keeping the turn is necessary for the
+session to be findable, not sufficient for it to outrank 40 other sessions.
