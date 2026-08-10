@@ -25,6 +25,11 @@ class Config:
     redact: bool = True
     harvest_enabled: bool = True
     brief_dir: str = DEFAULT_BRIEF_DIR
+    # Character budget for the assembled brief. The brief is re-injected into
+    # the context window the compaction just freed, so it must be bounded or it
+    # defeats its own purpose. 0 disables the cap (raw harvest, evaluation only).
+    # 12000 chars is roughly the size of a native compaction summary.
+    budget_chars: int = 12000
 
     @classmethod
     def from_file(cls, path: str) -> "Config":
@@ -44,6 +49,12 @@ class Config:
         harvest = os.environ.get("CLAIMKEEP_HARVEST")
         if harvest is not None and harvest.strip().lower() in ("0", "false", "off", "no"):
             cfg.harvest_enabled = False
+        budget = os.environ.get("CLAIMKEEP_BUDGET_CHARS")
+        if budget is not None:
+            try:
+                cfg.budget_chars = max(0, int(budget.strip()))
+            except ValueError:
+                pass
         return cfg
 
     def expanded_brief_dir(self) -> str:

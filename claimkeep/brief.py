@@ -32,12 +32,23 @@ class Claim:
     ts: Optional[str] = None
     source_span: Optional[str] = None
     id: Optional[str] = None
+    # Supersession chain. A later claim on the same topic does NOT delete the
+    # earlier one: the earlier one is marked superseded_by and kept. Dropping it
+    # silently makes a retraction indistinguishable from a fact never stated,
+    # and the reader cannot tell which of two conflicting facts is live.
+    superseded_by: Optional[str] = None
+    supersedes: Optional[str] = None
 
     def __post_init__(self) -> None:
         if self.confidence is not None:
             self.confidence = max(0.0, min(1.0, float(self.confidence)))
         if self.id is None:
             self.id = make_id(self.source_harvester, self.topic, self.text)
+
+    @property
+    def is_active(self) -> bool:
+        """True when nothing later has superseded this claim."""
+        return self.superseded_by is None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -48,6 +59,8 @@ class Claim:
             "source_harvester": self.source_harvester,
             "ts": self.ts,
             "source_span": self.source_span,
+            "superseded_by": self.superseded_by,
+            "supersedes": self.supersedes,
         }
 
     @classmethod
@@ -60,6 +73,8 @@ class Claim:
             source_harvester=str(data["source_harvester"]),
             ts=data.get("ts"),
             source_span=data.get("source_span"),
+            superseded_by=data.get("superseded_by"),
+            supersedes=data.get("supersedes"),
         )
 
 
@@ -119,15 +134,36 @@ class Brief:
         self.supplement.append(supplement)
         self.supplement = self._dedup_supplement(self.supplement)
 
+    @property
+    def active_claims(self) -> List[Claim]:
+        return [claim for claim in self.claims if claim.is_active]
+
     @staticmethod
     def _dedup_claims(claims: Iterable[Claim]) -> List[Claim]:
+        """Collapse exact repeats, mark same-topic history as superseded.
+
+        Two passes. Identical ids are the same claim restated, so only the last
+        occurrence survives. Different claims on the same topic are a change of
+        position over time: the newest stays active and every earlier one is
+        kept with superseded_by pointing at it, newest carrying supersedes back.
+        """
         latest_by_id: Dict[str, tuple[int, Claim]] = {}
         for index, claim in enumerate(claims):
             latest_by_id[str(claim.id)] = (index, claim)
-        latest_by_topic: Dict[str, tuple[int, Claim]] = {}
-        for index, claim in sorted(latest_by_id.values(), key=lambda item: item[0]):
-            latest_by_topic[claim.topic] = (index, claim)
-        return [claim for _, claim in sorted(latest_by_topic.values(), key=lambda item: item[0])]
+        ordered = [item for item in sorted(latest_by_id.values(), key=lambda item: item[0])]
+
+        by_topic: Dict[str, List[Claim]] = {}
+        for _, claim in ordered:
+            by_topic.setdefault(claim.topic, []).append(claim)
+
+        for topic_claims in by_topic.values():
+            newest = topic_claims[-1]
+            newest.superseded_by = None
+            if len(topic_claims) > 1:
+                newest.supersedes = topic_claims[-2].id
+            for earlier in topic_claims[:-1]:
+                earlier.superseded_by = newest.id
+        return [claim for _, claim in ordered]
 
     @staticmethod
     def _dedup_supplement(supplements: Iterable[Supplement]) -> List[Supplement]:

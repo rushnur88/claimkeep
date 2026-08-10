@@ -16,6 +16,7 @@ from .config import default_config
 from .harvesters import get_harvester
 from .redact import redact
 from .rehydrate import postcompact_payload
+from .select import apply_budget
 
 
 def _now_iso() -> str:
@@ -96,7 +97,10 @@ def _build_brief(transcript: List[str], created_utc: str, source: Dict[str, Any]
                     claims.append(item)
                 elif isinstance(item, Supplement):
                     supplements.append(item)
-    return Brief(created_utc=created_utc, source=source, claims=claims, supplement=supplements)
+    brief = Brief(created_utc=created_utc, source=source, claims=claims, supplement=supplements)
+    # Bound the brief before it is written. Without this the brief is the whole
+    # harvest and cannot be re-injected into the window it is meant to restore.
+    return apply_budget(brief, int(getattr(config, "budget_chars", 0) or 0))
 
 
 def _probe_log(brief: Brief, source: Dict[str, Any], created_utc: str) -> None:

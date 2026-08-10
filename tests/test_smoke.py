@@ -61,19 +61,28 @@ class ClaimKeepSmokeTest(unittest.TestCase):
         self.assertEqual(claims[0].confidence, 0.8)
         self.assertEqual(claims[0].text, "Ship Friday")
 
-    def test_supersede_by_topic_keeps_last(self):
+    def test_supersede_by_topic_keeps_last_active(self):
+        """Latest on a topic is the live one — and the earlier one is retained.
+
+        Contract changed deliberately: the older claim used to be deleted, which
+        erased the fact that a position had changed. It is now kept and marked.
+        """
         first = Claim("Ship Friday", 0.8, "ship", "calibration")
         second = Claim("Ship Monday", 0.9, "ship", "calibration")
         brief = Brief(claims=[first, second], supplement=[])
-        self.assertEqual(len(brief.claims), 1)
-        self.assertEqual(brief.claims[0].text, "Ship Monday")
+        self.assertEqual(len(brief.active_claims), 1)
+        self.assertEqual(brief.active_claims[0].text, "Ship Monday")
+        self.assertEqual(len(brief.claims), 2)
+        self.assertEqual(brief.claims[0].superseded_by, brief.active_claims[0].id)
 
     def test_supersede_by_topic_respects_late_duplicate_id(self):
+        """Restating an earlier claim makes it current again."""
         first = Claim("Ship Friday", 0.8, "ship", "calibration")
         second = Claim("Ship Monday", 0.9, "ship", "calibration")
         brief = Brief(claims=[first, second, first], supplement=[])
-        self.assertEqual(len(brief.claims), 1)
-        self.assertEqual(brief.claims[0].text, "Ship Friday")
+        self.assertEqual(len(brief.active_claims), 1)
+        self.assertEqual(brief.active_claims[0].text, "Ship Friday")
+        self.assertEqual(len(brief.claims), 2)
 
     def test_from_dict_requires_claims_and_supplement(self):
         with self.assertRaises(ValueError):

@@ -13,18 +13,33 @@ def render(brief: Brief) -> str:
     if brief.created_utc:
         lines.extend(["Created: " + brief.created_utc, ""])
 
+    def _sorted(items: List) -> List:
+        return sorted(
+            items,
+            key=lambda claim: (-1.0 if claim.confidence is None else -claim.confidence, claim.topic, claim.id or ""),
+        )
+
+    def _line(claim) -> str:
+        confidence = "unknown" if claim.confidence is None else f"{claim.confidence:.2f}"
+        return f"- [{confidence}] {claim.text} (topic: {claim.topic}; id: {claim.id})"
+
+    active = _sorted([claim for claim in brief.claims if claim.is_active])
+    superseded = _sorted([claim for claim in brief.claims if not claim.is_active])
+
     lines.append("## Claims")
-    claims = sorted(
-        brief.claims,
-        key=lambda claim: (-1.0 if claim.confidence is None else -claim.confidence, claim.topic, claim.id or ""),
-    )
-    if claims:
-        for claim in claims:
-            confidence = "unknown" if claim.confidence is None else f"{claim.confidence:.2f}"
-            lines.append(f"- [{confidence}] {claim.text} (topic: {claim.topic}; id: {claim.id})")
+    if active:
+        lines.extend(_line(claim) for claim in active)
     else:
         lines.append("- None")
     lines.append("")
+
+    # Retracted history is listed separately and never mixed with live facts:
+    # a reader must not have to guess which of two conflicting claims holds.
+    if superseded:
+        lines.append("## Superseded Claims")
+        for claim in superseded:
+            lines.append(_line(claim) + f" [superseded by: {claim.superseded_by}]")
+        lines.append("")
 
     grouped: Dict[str, List[str]] = defaultdict(list)
     for item in brief.supplement:
