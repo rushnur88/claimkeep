@@ -21,6 +21,7 @@ from .redact import redact
 from .rehydrate import postcompact_payload
 from .retrieve import recall
 from .select import apply_budget
+from .stats import collect as collect_stats, render as render_stats
 
 
 def _now_iso() -> str:
@@ -189,6 +190,13 @@ def _cmd_markers(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_stats(args: argparse.Namespace) -> int:
+    """Report what the layer actually did, counted from the stored briefs."""
+    report = collect_stats(default_config())
+    print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else render_stats(report), end="")
+    return 0
+
+
 def _cmd_recall(args: argparse.Namespace) -> int:
     """Search every stored brief and lesson, not just the most recent one."""
     config = default_config()
@@ -289,6 +297,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     markers = sub.add_parser("markers", help="print the confidence-marker instruction")
     markers.set_defaults(func=_cmd_markers)
+
+    stats_cmd = sub.add_parser("stats", help="report what the layer did across every stored brief")
+    stats_cmd.add_argument("--json", action="store_true")
+    stats_cmd.set_defaults(func=_cmd_stats)
 
     recall_cmd = sub.add_parser("recall", help="search every stored brief and lesson")
     recall_cmd.add_argument("query")

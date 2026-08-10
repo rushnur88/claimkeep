@@ -82,7 +82,26 @@ Both hooks are fail-open on purpose — a memory layer must never block compacti
 exit `0`. That means a broken install cannot stall your session, but it also means you should run
 the two checks above once rather than assume silence equals success. Errors go to stderr.
 
-Full test suite: `python3 tests/test_smoke.py` (13 tests, standard library only).
+Full test suite: `python3 -m unittest discover -s tests` (92 tests, standard library only).
+
+## See what it did
+
+`stats` reports across every brief you have stored, not just the last one:
+
+```bash
+claimkeep stats          # human-readable
+claimkeep stats --json   # same numbers, machine-readable
+```
+
+It answers the question a single brief cannot: is the layer still earning its keep. Two lines matter
+most. **Retractions** counts claims that overturn an earlier statement — a memory layer that keeps a
+refuted claim and drops its refutation is worse than no memory at all. **Confidence-marked** is the
+share of claims that arrived already carrying a `[C:NN%]` marker; when that share falls, the
+convention is eroding and the calibration harvester quietly runs out of input.
+
+If your briefs came from a different collector, `stats` reports retractions as *not measurable*
+rather than as zero. A zero you cannot distinguish from "never happened" is the failure mode this
+package is built around, and the report is not allowed to produce one.
 
 ---
 
