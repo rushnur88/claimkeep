@@ -166,5 +166,33 @@ class DateTokenTest(unittest.TestCase):
         self.assertEqual(self.retrieve.date_tokens("2023/05/20 (Sat) 02:21"), [])
 
 
+
+class CyrillicTest(unittest.TestCase):
+    def test_russian_text_tokenizes(self):
+        """Measured 2026-08-10: a latin-only tokenizer turned a Russian corpus
+        into nothing, so every Russian query returned zero. Not weak — blind."""
+        from claimkeep.retrieve import tokenize
+
+        self.assertEqual(
+            tokenize("Коммит прошёл, 71 тест зелёный"),
+            ["коммит", "прошёл", "71", "тест", "зелёный"],
+        )
+        self.assertEqual(
+            tokenize("Commit passed, 71 tests green"),
+            ["commit", "passed", "71", "tests", "green"],
+        )
+
+    def test_a_russian_query_finds_a_russian_document(self):
+        from claimkeep.retrieve import Document, score
+
+        docs = [
+            Document(text="Жду твоего слова: пушить в master или оставить в ветке", kind="claim", id="a"),
+            Document(text="The dog is a King Charles Spaniel", kind="claim", id="b"),
+        ]
+        ranked = score("что я жду", docs)
+        self.assertTrue(ranked)
+        self.assertEqual(ranked[0]["doc"].id, "a")
+
+
 if __name__ == "__main__":
     unittest.main()

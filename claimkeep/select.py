@@ -46,6 +46,14 @@ DEFAULT_CONFIDENCE = 0.5
 # supplement floor exists for.
 RULE_EXTRACTED_WEIGHT = 0.75
 
+# A retraction outranks everything else at equal length. After compaction the
+# agent restates whatever survived with undiminished confidence, so a refuted
+# claim that outlives its own refutation is the one failure a memory layer must
+# not produce. The fleet hook protects a slot for the newest few; here the same
+# intent is expressed as a weight, which composes with recency instead of
+# fighting it.
+RETRACTION_BOOST = 2.0
+
 
 def _recency(index: int, total: int) -> float:
     if total <= 1:
@@ -58,7 +66,9 @@ def score_claim(claim: Claim, index: int, total: int) -> float:
     score = BASE_CLAIM * (
         W_BASE + W_CONFIDENCE * confidence + W_RECENCY * _recency(index, total)
     )
-    if claim.source_harvester == "atomic" and claim.confidence is None:
+    if claim.topic.startswith("retraction"):
+        score *= RETRACTION_BOOST
+    elif claim.source_harvester == "atomic" and claim.confidence is None:
         score *= RULE_EXTRACTED_WEIGHT
     if not claim.is_active:
         score *= SUPERSEDED_PENALTY

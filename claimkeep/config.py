@@ -19,7 +19,7 @@ class Config:
     # because they catch what prose rules cannot — markers, paths, ids, lessons —
     # and that is most of what an agent transcript is made of.
     harvesters: List[str] = field(
-        default_factory=lambda: ["atomic", "calibration", "regex_floor", "lessons"]
+        default_factory=lambda: ["retraction", "atomic", "calibration", "regex_floor", "lessons"]
     )
     # Accepts both the bare marker `[C:80%]` and the extended form that carries
     # an evidence pointer, `[C:80%, basis: read the file]`. The extended form is

@@ -9,6 +9,7 @@ from .base import Harvester
 from .calibration import CalibrationHarvester
 from .lessons import LessonHarvester
 from .regex_floor import RegexFloorHarvester
+from .retraction import RetractionHarvester
 
 
 REGISTRY: Dict[str, Type[Harvester]] = {
@@ -16,6 +17,7 @@ REGISTRY: Dict[str, Type[Harvester]] = {
     CalibrationHarvester.name: CalibrationHarvester,
     RegexFloorHarvester.name: RegexFloorHarvester,
     LessonHarvester.name: LessonHarvester,
+    RetractionHarvester.name: RetractionHarvester,
 }
 
 
@@ -32,6 +34,7 @@ __all__ = [
     "CalibrationHarvester",
     "RegexFloorHarvester",
     "LessonHarvester",
+    "RetractionHarvester",
     "REGISTRY",
     "get_harvester",
 ]
