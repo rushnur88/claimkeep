@@ -19,6 +19,7 @@ from .lessons import Lesson, LessonStore
 from .prompt import marker_instruction
 from .redact import redact
 from .rehydrate import postcompact_payload
+from .retrieve import recall
 from .select import apply_budget
 
 
@@ -188,6 +189,28 @@ def _cmd_markers(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_recall(args: argparse.Namespace) -> int:
+    """Search every stored brief and lesson, not just the most recent one."""
+    config = default_config()
+    rows = recall(args.query, config, limit=args.limit, budget_chars=args.budget)
+    if args.json:
+        print(json.dumps(
+            [{"text": row["doc"].text, "kind": row["doc"].kind, "id": row["doc"].id,
+              "ts": row["doc"].ts, "superseded": row["doc"].superseded,
+              "score": row["score"], "bm25": row["bm25"], "source": row["doc"].source}
+             for row in rows],
+            ensure_ascii=False, indent=2))
+        return 0
+    if not rows:
+        print("no match")
+        return 0
+    for row in rows:
+        doc = row["doc"]
+        flag = " [superseded]" if doc.superseded else ""
+        print(f"- ({doc.kind}, {row['score']}){flag} {doc.text}")
+    return 0
+
+
 def _cmd_lessons(args: argparse.Namespace) -> int:
     config = default_config()
     store = LessonStore(config.expanded_lessons_path())
@@ -266,6 +289,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     markers = sub.add_parser("markers", help="print the confidence-marker instruction")
     markers.set_defaults(func=_cmd_markers)
+
+    recall_cmd = sub.add_parser("recall", help="search every stored brief and lesson")
+    recall_cmd.add_argument("query")
+    recall_cmd.add_argument("--limit", type=int, default=10)
+    recall_cmd.add_argument("--budget", type=int, default=0, help="cap the result set in characters")
+    recall_cmd.add_argument("--json", action="store_true")
+    recall_cmd.set_defaults(func=_cmd_recall)
 
     lessons = sub.add_parser("lessons", help="list or add durable lessons")
     lessons.add_argument("--limit", type=int, default=20)
