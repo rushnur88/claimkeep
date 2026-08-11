@@ -1,7 +1,7 @@
 # ClaimKeep
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-120%20passing-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-124%20passing-brightgreen.svg)](tests)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](pyproject.toml)
 [![Paper](https://img.shields.io/badge/paper-Zenodo-1682D4.svg)](https://zenodo.org/records/20819013)
 
@@ -119,7 +119,7 @@ Both hooks are fail-open on purpose — a memory layer must never block compacti
 exit `0`. That means a broken install cannot stall your session, but it also means you should run
 the two checks above once rather than assume silence equals success. Errors go to stderr.
 
-Full test suite: `python3 -m unittest discover -s tests` (120 tests, standard library only).
+Full test suite: `python3 -m unittest discover -s tests` (124 tests, standard library only).
 
 ## See what it did
 
@@ -139,6 +139,11 @@ convention is eroding and the calibration harvester quietly runs out of input.
 If your briefs came from a different collector, `stats` reports retractions as *not measurable*
 rather than as zero. A zero you cannot distinguish from "never happened" is the failure mode this
 package is built around, and the report is not allowed to produce one.
+
+That holds in `--json` too: `retractions` is `null` — never `0` — whenever the count is
+unavailable, alongside an explicit `retractions_measurable` flag, and `lessons_total` is `null`
+when there is no lesson store to read. The machine-readable output is where a false zero does the
+most damage, because a dashboard will plot it as a clean result and nobody will ask again.
 
 ---
 

@@ -96,7 +96,16 @@ def collect(config: Config) -> Dict[str, Any]:
     known = {"retraction", "atomic", "calibration", "regex_floor", "lessons"}
     labelled = sum(1 for c in claims if str(c.get("source_harvester", "")) in known)
 
-    stamps = sorted(str(b.get("created_utc", "")) for b in briefs if b.get("created_utc"))
+    # The human report says "not measurable" here. The JSON has to say the same
+    # thing, and `0` does not say it: a consumer graphing retractions would read
+    # a clean zero off an unlabelled corpus and never learn the count was never
+    # available. `null` is the one value a machine cannot mistake for none-happened.
+    retractions_measurable = bool(labelled)
+    retractions_out: Optional[int] = retractions if retractions_measurable else None
+
+    stamps = sorted(
+        str(b.get("created_utc", "")) for b in briefs if b.get("created_utc")
+    )
     chars = sum(len(str(c.get("text", ""))) for c in claims)
 
     # The lesson store has the same zero problem as retractions, one line down.
@@ -110,7 +119,11 @@ def collect(config: Config) -> Dict[str, Any]:
         lessons_path = config.expanded_lessons_path()
         lessons_store_found = os.path.isfile(lessons_path)
         try:
-            lessons_total = len(LessonStore(lessons_path).load())
+            # No store on disk means the count is unavailable, not zero — the
+            # same distinction the retraction line makes one field up.
+            lessons_total = (
+                len(LessonStore(lessons_path).load()) if lessons_store_found else None
+            )
         except Exception:
             lessons_total = None
 
@@ -122,7 +135,8 @@ def collect(config: Config) -> Dict[str, Any]:
         "claims_total": len(claims),
         "claims_per_brief": round(len(claims) / len(briefs), 1) if briefs else 0.0,
         "claim_chars_total": chars,
-        "retractions": retractions,
+        "retractions": retractions_out,
+        "retractions_measurable": retractions_measurable,
         "superseded": superseded,
         "labelled_claims": labelled,
         "marked_claims": len(marked),
@@ -152,8 +166,13 @@ def render(report: Dict[str, Any]) -> str:
     lines.append(f"Briefs stored: {report['briefs']}")
     lines.append(f"Period: {report['first_brief_utc']} .. {report['last_brief_utc']}")
     lines.append("")
-    lines.append(f"Claims kept: {report['claims_total']} ({report['claims_per_brief']} per brief)")
-    if report["labelled_claims"]:
+    lines.append(
+        f"Claims kept: {report['claims_total']} ({report['claims_per_brief']} per brief)"
+    )
+    # Read the flag rather than re-deriving the condition: when the two branches
+    # decided this independently they drifted, and the JSON printed 0 where this
+    # line printed "not measurable".
+    if report.get("retractions_measurable", report["retractions"] is not None):
         lines.append(f"Retractions: {report['retractions']}")
     else:
         lines.append("Retractions: not measurable — no claim carries a harvester")
@@ -166,7 +185,7 @@ def render(report: Dict[str, Any]) -> str:
         line += f", mean {report['mean_confidence']}"
     lines.append(line)
 
-    if report["lessons_total"] is not None:
+    if report["lessons_path"] is not None:
         if report.get("lessons_store_found"):
             lines.append(f"Lessons carried forward: {report['lessons_total']}")
         else:
