@@ -18,7 +18,7 @@ into a claim the agent already selected and already rated. No guessing what matt
 regex floor still catches paths, ids, and decision lines when a transcript has no markers at all.
 The brief contract is frozen and documented in [docs/BRIEF_SCHEMA.md](docs/BRIEF_SCHEMA.md).
 
-![What compaction drops, and what ClaimKeep keeps](docs/what-compaction-drops.svg)
+![A real run: the claim is harvested before compaction and comes back verbatim afterwards](docs/claimkeep-demo.gif)
 
 The failure this addresses is specific. Compaction rarely forgets the topic; it forgets the exact
 path, the port, the commit sha, the version that was ruled out. Those are the parts an agent cannot
