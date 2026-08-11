@@ -1,5 +1,10 @@
 # ClaimKeep
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Tests](https://img.shields.io/badge/tests-92%20passing-brightgreen.svg)](tests)
+[![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](pyproject.toml)
+[![Paper](https://img.shields.io/badge/paper-Zenodo-1682D4.svg)](https://zenodo.org/records/20819013)
+
 Continuous memory for Claude Code. When the context window compacts, the summary keeps the gist
 and drops the specifics — numbers, paths, ids, and decisions that were later reversed. ClaimKeep
 runs before compaction, takes the agent's own confidence-marked statements **verbatim** instead of
@@ -10,6 +15,14 @@ The idea it rests on: a calibration marker such as `Ship Friday [C:80%]` turns a
 into a claim the agent already selected and already rated. No guessing what mattered. A marker-free
 regex floor still catches paths, ids, and decision lines when a transcript has no markers at all.
 The brief contract is frozen and documented in [docs/BRIEF_SCHEMA.md](docs/BRIEF_SCHEMA.md).
+
+![What compaction drops, and what ClaimKeep keeps](docs/what-compaction-drops.svg)
+
+The failure this addresses is specific. Compaction rarely forgets the topic; it forgets the exact
+path, the port, the commit sha, the version that was ruled out. Those are the parts an agent cannot
+reconstruct by reasoning, and the parts that turn a resumed session into a re-investigation. If your
+sessions are short, you will never notice this. If you run long refactors, multi-day debugging, or
+agent pipelines that compact several times a day, you have paid for it repeatedly.
 
 Measured in production, not on a benchmark: **at least 326 compactions survived on two independent
 platforms — 283 of them carried facts forward (86.8%), with one confirmed loss.**
@@ -29,6 +42,26 @@ these numbers as an instrumented-fleet result, not as what a fresh install shoul
 Method and defensible lift numbers are in the paper, *"Continuous Memory for Multi-Agent
 Infrastructure: A Calibration-Density Law for Surviving Context Compaction"* (Ravshan Nuraliev,
 2026) — <https://zenodo.org/records/20819013>. Please cite the Zenodo record if you use ClaimKeep.
+
+## How this differs from what you already have
+
+`CLAUDE.md` and memory MCP servers store what **you** decided to write down, ahead of time. That is
+curation, and it works well for stable facts — conventions, architecture, preferences.
+
+ClaimKeep stores what the **agent** said during the session and is about to lose. Nobody types those
+facts into a memory file: they are discovered mid-work, used for ten minutes, and dropped by the
+summarizer — the port you just found, the hypothesis you ruled out, the path that turned out to be
+the real one. The two layers do not compete; curated memory answers *how we do things here*, and
+ClaimKeep answers *what did I just find out*.
+
+Three properties follow from that scope, and they are the reasons to prefer it over rolling your own:
+
+- **It augments, never replaces.** Native compaction still runs; the brief is added on top. The
+  failure mode of "my memory layer summarized worse than the built-in one" cannot happen here.
+- **It cannot stall your session.** Both hooks are fail-open by construction and always exit `0`.
+- **It refuses to fake a zero.** If retractions cannot be measured, `stats` reports *not measurable*
+  rather than `0`. A metric that cannot distinguish "clean" from "not instrumented" is the exact bug
+  this package is built to avoid.
 
 ## Install
 

@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 400" width="880" height="400" font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace">
+  <rect width="880" height="400" rx="10" fill="#0d1117"/>
+
+  <text x="32" y="42" fill="#8b949e" font-size="13" letter-spacing="1.4">BEFORE COMPACTION — what the agent actually said</text>
+  <rect x="32" y="58" width="816" height="74" rx="6" fill="#161b22" stroke="#30363d"/>
+  <text x="48" y="84" font-size="13" fill="#c9d1d9">Model lives in <tspan fill="#79c0ff">/home/aria/.switchroom/agents/&lt;agent&gt;/home/.aria_model</tspan>, read at boot</text>
+  <text x="48" y="108" font-size="13" fill="#c9d1d9">— switching requires a container restart <tspan fill="#d29922">[C:90%]</tspan></text>
+
+  <path d="M440 140 L440 168" stroke="#30363d" stroke-width="2"/>
+  <path d="M432 160 L440 170 L448 160" fill="none" stroke="#30363d" stroke-width="2"/>
+
+  <g>
+    <text x="32" y="196" fill="#8b949e" font-size="13" letter-spacing="1.4">NATIVE SUMMARY</text>
+    <rect x="32" y="212" width="396" height="150" rx="6" fill="#161b22" stroke="#30363d"/>
+    <text x="48" y="240" font-size="13" fill="#8b949e">We discussed how the model is</text>
+    <text x="48" y="262" font-size="13" fill="#8b949e">configured for the agents and</text>
+    <text x="48" y="284" font-size="13" fill="#8b949e">how to change it.</text>
+    <text x="48" y="322" font-size="12" fill="#f85149">✗ path gone   ✗ mechanism gone</text>
+    <text x="48" y="344" font-size="12" fill="#f85149">✗ confidence gone</text>
+  </g>
+
+  <g>
+    <text x="452" y="196" fill="#8b949e" font-size="13" letter-spacing="1.4">WITH CLAIMKEEP</text>
+    <rect x="452" y="212" width="396" height="150" rx="6" fill="#161b22" stroke="#238636"/>
+    <text x="468" y="240" font-size="12" fill="#c9d1d9">[0.90] Model lives in</text>
+    <text x="468" y="260" font-size="12" fill="#79c0ff">/home/aria/.switchroom/agents/</text>
+    <text x="468" y="278" font-size="12" fill="#79c0ff">&lt;agent&gt;/home/.aria_model</text>
+    <text x="468" y="298" font-size="12" fill="#c9d1d9">— restart required to switch</text>
+    <text x="468" y="330" font-size="12" fill="#3fb950">✓ verbatim   ✓ path kept</text>
+    <text x="468" y="350" font-size="12" fill="#3fb950">✓ confidence kept</text>
+  </g>
+</svg>
