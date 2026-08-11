@@ -11,6 +11,8 @@ runs before compaction, takes the agent's own confidence-marked statements **ver
 paraphrasing them, and re-injects them afterwards. It augments native compaction rather than
 replacing it, so it is never worse than the default.
 
+https://github.com/user-attachments/assets/a0a6700e-8643-48a9-bc45-15a7f6c327fa
+
 The idea it rests on: a calibration marker such as `Ship Friday [C:80%]` turns any factual sentence
 into a claim the agent already selected and already rated. No guessing what mattered. A marker-free
 regex floor still catches paths, ids, and decision lines when a transcript has no markers at all.
