@@ -1,10 +1,12 @@
 {
   "name": "rushnur88",
-  "owner": {"name": "Ravshan Nuraliev"},
+  "owner": {
+    "name": "Ravshan Nuraliev"
+  },
   "plugins": [
     {
       "name": "claimkeep",
-      "source": {"source": "github", "repo": "rushnur88/claimkeep"},
+      "source": "./",
       "description": "Continuous memory that survives context compaction."
     }
   ]
