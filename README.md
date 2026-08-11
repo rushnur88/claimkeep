@@ -1,7 +1,7 @@
 # ClaimKeep
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-105%20passing-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-113%20passing-brightgreen.svg)](tests)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](pyproject.toml)
 [![Paper](https://img.shields.io/badge/paper-Zenodo-1682D4.svg)](https://zenodo.org/records/20819013)
 
@@ -119,7 +119,7 @@ Both hooks are fail-open on purpose — a memory layer must never block compacti
 exit `0`. That means a broken install cannot stall your session, but it also means you should run
 the two checks above once rather than assume silence equals success. Errors go to stderr.
 
-Full test suite: `python3 -m unittest discover -s tests` (105 tests, standard library only).
+Full test suite: `python3 -m unittest discover -s tests` (113 tests, standard library only).
 
 ## See what it did
 
