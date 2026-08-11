@@ -59,6 +59,13 @@ def collect(config: Config) -> Dict[str, Any]:
 
     claims: List[Dict[str, Any]] = []
     supplement_kinds: Counter = Counter()
+    # What the budget threw away. A brief records this in source.budget, but the
+    # report used to print only what survived: "Claims kept: 184" reads as the
+    # whole harvest when it can be 0.5% of it. Kept without harvested is the same
+    # unanswerable number as a retraction count with nothing to compare it to.
+    harvested_claims = 0
+    dropped_items = 0
+    budget_seen = False
     for brief in briefs:
         for claim in brief.get("claims", []):
             if isinstance(claim, dict):
@@ -66,6 +73,15 @@ def collect(config: Config) -> Dict[str, Any]:
         for item in brief.get("supplement", []):
             if isinstance(item, dict):
                 supplement_kinds[item.get("kind", "?")] += 1
+        budget = (
+            brief.get("source", {}).get("budget")
+            if isinstance(brief.get("source"), dict)
+            else None
+        )
+        if isinstance(budget, dict):
+            budget_seen = True
+            harvested_claims += int(budget.get("harvested_claims") or 0)
+            dropped_items += int(budget.get("dropped_items") or 0)
 
     harvesters: Counter = Counter()
     topics: Counter = Counter()
@@ -135,6 +151,11 @@ def collect(config: Config) -> Dict[str, Any]:
         "claims_total": len(claims),
         "claims_per_brief": round(len(claims) / len(briefs), 1) if briefs else 0.0,
         "claim_chars_total": chars,
+        # null, not 0, when no brief recorded a budget — the same rule the
+        # retraction count follows: absent is not the same as none.
+        "harvested_claims": harvested_claims if budget_seen else None,
+        "dropped_items": dropped_items if budget_seen else None,
+        "budget_measurable": budget_seen,
         "retractions": retractions_out,
         "retractions_measurable": retractions_measurable,
         "superseded": superseded,
@@ -169,6 +190,20 @@ def render(report: Dict[str, Any]) -> str:
     lines.append(
         f"Claims kept: {report['claims_total']} ({report['claims_per_brief']} per brief)"
     )
+    # Kept alone reads as the whole harvest. Say what the budget threw away, or
+    # 184 looks like the result when it is 0.5% of it.
+    if report.get("budget_measurable") and report.get("dropped_items"):
+        harvested = report.get("harvested_claims") or 0
+        dropped = report["dropped_items"]
+        lines.append(
+            f"Dropped by budget: {dropped} items ({harvested} claims harvested)"
+        )
+        if harvested:
+            kept_share = report["claims_total"] / harvested * 100
+            lines.append(
+                f"  {kept_share:.1f}% of harvested claims fit the brief; raise "
+                "`budget_chars` if that is too little."
+            )
     # Read the flag rather than re-deriving the condition: when the two branches
     # decided this independently they drifted, and the JSON printed 0 where this
     # line printed "not measurable".

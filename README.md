@@ -1,7 +1,7 @@
 # ClaimKeep
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-124%20passing-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-128%20passing-brightgreen.svg)](tests)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](pyproject.toml)
 [![Paper](https://img.shields.io/badge/paper-Zenodo-1682D4.svg)](https://zenodo.org/records/20819013)
 
@@ -119,7 +119,7 @@ Both hooks are fail-open on purpose — a memory layer must never block compacti
 exit `0`. That means a broken install cannot stall your session, but it also means you should run
 the two checks above once rather than assume silence equals success. Errors go to stderr.
 
-Full test suite: `python3 -m unittest discover -s tests` (124 tests, standard library only).
+Full test suite: `python3 -m unittest discover -s tests` (128 tests, standard library only).
 
 ## See what it did
 
@@ -135,6 +135,11 @@ most. **Retractions** counts claims that overturn an earlier statement — a mem
 refuted claim and drops its refutation is worse than no memory at all. **Confidence-marked** is the
 share of claims that arrived already carrying a `[C:NN%]` marker; when that share falls, the
 convention is eroding and the calibration harvester quietly runs out of input.
+
+**Dropped by budget** appears whenever the brief did not fit `budget_chars`, with the share of the
+harvest that survived. A long session can harvest twenty thousand claims and keep under two hundred
+of them; "claims kept" alone reads as the whole harvest and hides that the budget, not the
+transcript, decided what you get back.
 
 If your briefs came from a different collector, `stats` reports retractions as *not measurable*
 rather than as zero. A zero you cannot distinguish from "never happened" is the failure mode this
