@@ -105,6 +105,34 @@ class StatsTest(unittest.TestCase):
             report = collect(Config(brief_dir=d, lessons_enabled=False))
         self.assertEqual(report["superseded"], 1)
 
+    def test_a_missing_lesson_store_is_not_reported_as_zero(self):
+        """The same zero as retractions, one line down: LessonStore.load()
+        returns [] for a file that was never created, which reads exactly like
+        "no lesson was ever carried forward"."""
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "a.json", [_claim("fact", "atomic", "t")])
+            missing = os.path.join(d, "never_created.jsonl")
+            report = collect(Config(brief_dir=d, lessons_enabled=True, lessons_path=missing))
+            text = render(report)
+
+        self.assertFalse(report["lessons_store_found"])
+        self.assertNotIn("Lessons carried forward: 0", text)
+        self.assertIn("no lesson store", text)
+        self.assertIn(missing, text)
+
+    def test_an_existing_but_empty_lesson_store_reports_an_honest_zero(self):
+        with tempfile.TemporaryDirectory() as d:
+            _write(d, "a.json", [_claim("fact", "atomic", "t")])
+            present = os.path.join(d, "lessons.jsonl")
+            open(present, "w", encoding="utf-8").close()
+            report = collect(Config(brief_dir=d, lessons_enabled=True, lessons_path=present))
+            text = render(report)
+
+        self.assertTrue(report["lessons_store_found"])
+        self.assertEqual(report["lessons_total"], 0)
+        self.assertIn("Lessons carried forward: 0", text)
+        self.assertNotIn("no lesson store", text)
+
 
 if __name__ == "__main__":
     unittest.main()

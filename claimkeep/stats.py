@@ -99,10 +99,18 @@ def collect(config: Config) -> Dict[str, Any]:
     stamps = sorted(str(b.get("created_utc", "")) for b in briefs if b.get("created_utc"))
     chars = sum(len(str(c.get("text", ""))) for c in claims)
 
+    # The lesson store has the same zero problem as retractions, one line down.
+    # LessonStore.load() returns an empty list when the file is absent, so a
+    # store that was never created and a store that is genuinely empty both
+    # arrive here as 0. Record which one it was; the reader cannot recover it.
     lessons_total: Optional[int] = None
+    lessons_path: Optional[str] = None
+    lessons_store_found = False
     if config.lessons_enabled:
+        lessons_path = config.expanded_lessons_path()
+        lessons_store_found = os.path.isfile(lessons_path)
         try:
-            lessons_total = len(LessonStore(config.expanded_lessons_path()).load())
+            lessons_total = len(LessonStore(lessons_path).load())
         except Exception:
             lessons_total = None
 
@@ -124,6 +132,8 @@ def collect(config: Config) -> Dict[str, Any]:
         "supplement_by_kind": dict(supplement_kinds.most_common()),
         "top_topics": dict(topics.most_common(10)),
         "lessons_total": lessons_total,
+        "lessons_path": lessons_path,
+        "lessons_store_found": lessons_store_found,
     }
 
 
@@ -157,7 +167,13 @@ def render(report: Dict[str, Any]) -> str:
     lines.append(line)
 
     if report["lessons_total"] is not None:
-        lines.append(f"Lessons carried forward: {report['lessons_total']}")
+        if report.get("lessons_store_found"):
+            lines.append(f"Lessons carried forward: {report['lessons_total']}")
+        else:
+            lines.append("Lessons carried forward: not measurable — no lesson store")
+            lines.append(f"  at {report['lessons_path']}. Either nothing was ever")
+            lines.append("  recorded or the lessons harvester is not wired; both look")
+            lines.append("  identical from here.")
 
     if report["by_harvester"]:
         lines.append("")
