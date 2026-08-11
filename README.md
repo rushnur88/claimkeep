@@ -1,7 +1,7 @@
 # ClaimKeep
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-92%20passing-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-105%20passing-brightgreen.svg)](tests)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](pyproject.toml)
 [![Paper](https://img.shields.io/badge/paper-Zenodo-1682D4.svg)](https://zenodo.org/records/20819013)
 
@@ -81,8 +81,10 @@ work, and the hooks will prefer the installed binary when they find one.
 
 Note that a memory layer reads your transcript. ClaimKeep runs a secret and PII redaction pass
 before any text enters a brief (API keys, tokens, private-key blocks, JWTs, bearer tokens,
-`key=value` secrets, emails), on by default via `Config.redact`. It targets well-known shapes and
-is defense in depth, not a guarantee — it is not a reason to paste credentials into a session.
+`key=value` secrets whatever prefix the variable name carries — `DB_PASSWORD`, `OPENAI_API_KEY`,
+`AWS_SECRET_ACCESS_KEY` — a high-entropy blob introduced by a secret word, and emails), on by
+default via `Config.redact`. It targets well-known shapes and is defense in depth, not a
+guarantee — it is not a reason to paste credentials into a session.
 
 ## Verify it works
 
@@ -117,7 +119,7 @@ Both hooks are fail-open on purpose — a memory layer must never block compacti
 exit `0`. That means a broken install cannot stall your session, but it also means you should run
 the two checks above once rather than assume silence equals success. Errors go to stderr.
 
-Full test suite: `python3 -m unittest discover -s tests` (92 tests, standard library only).
+Full test suite: `python3 -m unittest discover -s tests` (105 tests, standard library only).
 
 ## See what it did
 
