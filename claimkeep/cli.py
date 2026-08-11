@@ -21,11 +21,17 @@ from .redact import redact
 from .rehydrate import postcompact_payload
 from .retrieve import recall
 from .select import apply_budget
-from .stats import collect as collect_stats, render as render_stats
+from .stats import collect as collect_stats
+from .stats import render as render_stats
 
 
 def _now_iso() -> str:
-    return _datetime.datetime.now(_datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    return (
+        _datetime.datetime.now(_datetime.timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z")
+    )
 
 
 def _extract_text(obj: Dict[str, Any]) -> Optional[str]:
@@ -52,19 +58,44 @@ def _extract_text(obj: Dict[str, Any]) -> Optional[str]:
     return None
 
 
+def _warn(what: str, exc: BaseException = None) -> None:
+    """Report a swallowed failure on stderr.
+
+    Every failure here is caught so the hook can exit 0 — compaction must never
+    be blocked by a memory layer. Staying silent about it, though, makes a broken
+    install indistinguishable from a working one that had nothing to say, which
+    is the one thing this package refuses to do anywhere else.
+    """
+    detail = f": {type(exc).__name__}: {exc}" if exc is not None else ""
+    print(f"claimkeep: {what}{detail}", file=sys.stderr)
+
+
 def _read_transcript(path: str) -> List[str]:
     units: List[str] = []
+    skipped = 0
+    total = 0
     with open(path, "r", encoding="utf-8") as handle:
         for line in handle:
+            if not line.strip():
+                continue
+            total += 1
             try:
                 obj = json.loads(line)
             except json.JSONDecodeError:
+                skipped += 1
                 continue
             if not isinstance(obj, dict):
+                skipped += 1
                 continue
             text = _extract_text(obj)
             if text:
                 units.append(text)
+    # One line, not one per row: a transcript can legitimately hold a few
+    # unparsable rows, but a whole file of them means the wrong path was wired.
+    if skipped and skipped == total:
+        _warn(f"no usable rows in {path} ({total} unparsable)")
+    elif skipped:
+        _warn(f"skipped {skipped} of {total} unparsable rows in {path}")
     return units
 
 
@@ -74,8 +105,12 @@ def _read_hook_stdin() -> Dict[str, Any]:
         if not raw.strip():
             return {}
         data = json.loads(raw)
-        return data if isinstance(data, dict) else {}
-    except (OSError, json.JSONDecodeError):
+        if isinstance(data, dict):
+            return data
+        _warn("hook stdin was not a JSON object; ignoring it")
+        return {}
+    except (OSError, json.JSONDecodeError) as exc:
+        _warn("could not read hook payload from stdin", exc)
         return {}
 
 
@@ -102,10 +137,15 @@ def _carry_lessons(
     fresh = [claim for claim in claims if claim.topic.startswith(prefix)]
     try:
         store = LessonStore(config.expanded_lessons_path())
-        store.append([Lesson(text=claim.text, ts=created_utc, session=source.get("session"))
-                      for claim in fresh])
+        store.append(
+            [
+                Lesson(text=claim.text, ts=created_utc, session=source.get("session"))
+                for claim in fresh
+            ]
+        )
         carried = store.recent(int(getattr(config, "lessons_in_brief", 0) or 0))
-    except OSError:
+    except OSError as exc:
+        _warn("lesson store unavailable; carrying no lessons forward", exc)
         return claims
 
     known = {claim.text.casefold() for claim in fresh}
@@ -125,7 +165,9 @@ def _carry_lessons(
     return claims
 
 
-def _build_brief(transcript: List[str], created_utc: str, source: Dict[str, Any]) -> Brief:
+def _build_brief(
+    transcript: List[str], created_utc: str, source: Dict[str, Any]
+) -> Brief:
     config = default_config()
     if getattr(config, "redact", True):
         transcript = [redact(unit) for unit in transcript]
@@ -142,7 +184,9 @@ def _build_brief(transcript: List[str], created_utc: str, source: Dict[str, Any]
                 elif isinstance(item, Supplement):
                     supplements.append(item)
         claims = _carry_lessons(claims, config, created_utc, source)
-    brief = Brief(created_utc=created_utc, source=source, claims=claims, supplement=supplements)
+    brief = Brief(
+        created_utc=created_utc, source=source, claims=claims, supplement=supplements
+    )
     # Bound the brief before it is written. Without this the brief is the whole
     # harvest and cannot be re-injected into the window it is meant to restore.
     return apply_budget(brief, int(getattr(config, "budget_chars", 0) or 0))
@@ -171,7 +215,8 @@ def _probe_log(brief: Brief, source: Dict[str, Any], created_utc: str) -> None:
             os.makedirs(parent, exist_ok=True)
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(json.dumps(record, ensure_ascii=False) + "\n")
-    except Exception:
+    except Exception as exc:
+        _warn("probe log not written", exc)
         return
 
 
@@ -193,7 +238,12 @@ def _cmd_markers(_args: argparse.Namespace) -> int:
 def _cmd_stats(args: argparse.Namespace) -> int:
     """Report what the layer actually did, counted from the stored briefs."""
     report = collect_stats(default_config())
-    print(json.dumps(report, ensure_ascii=False, indent=2) if args.json else render_stats(report), end="")
+    print(
+        json.dumps(report, ensure_ascii=False, indent=2)
+        if args.json
+        else render_stats(report),
+        end="",
+    )
     return 0
 
 
@@ -202,12 +252,25 @@ def _cmd_recall(args: argparse.Namespace) -> int:
     config = default_config()
     rows = recall(args.query, config, limit=args.limit, budget_chars=args.budget)
     if args.json:
-        print(json.dumps(
-            [{"text": row["doc"].text, "kind": row["doc"].kind, "id": row["doc"].id,
-              "ts": row["doc"].ts, "superseded": row["doc"].superseded,
-              "score": row["score"], "bm25": row["bm25"], "source": row["doc"].source}
-             for row in rows],
-            ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                [
+                    {
+                        "text": row["doc"].text,
+                        "kind": row["doc"].kind,
+                        "id": row["doc"].id,
+                        "ts": row["doc"].ts,
+                        "superseded": row["doc"].superseded,
+                        "score": row["score"],
+                        "bm25": row["bm25"],
+                        "source": row["doc"].source,
+                    }
+                    for row in rows
+                ],
+                ensure_ascii=False,
+                indent=2,
+            )
+        )
         return 0
     if not rows:
         print("no match")
@@ -228,7 +291,11 @@ def _cmd_lessons(args: argparse.Namespace) -> int:
         return 0
     lessons = store.recent(args.limit)
     if args.json:
-        print(json.dumps([lesson.to_dict() for lesson in lessons], ensure_ascii=False, indent=2))
+        print(
+            json.dumps(
+                [lesson.to_dict() for lesson in lessons], ensure_ascii=False, indent=2
+            )
+        )
         return 0
     if not lessons:
         print("no lessons stored yet")
@@ -249,7 +316,9 @@ def _cmd_precompact(args: argparse.Namespace) -> int:
         created_utc = args.now or _now_iso()
         source = {
             "agent": str(hook.get("agent", "claude-code")),
-            "session": hook.get("session_id") or hook.get("sessionId") or hook.get("session"),
+            "session": hook.get("session_id")
+            or hook.get("sessionId")
+            or hook.get("session"),
         }
         brief = _build_brief(transcript, created_utc, source)
         out = args.out
@@ -269,7 +338,8 @@ def _cmd_precompact(args: argparse.Namespace) -> int:
         _probe_log(brief, source, created_utc)
         print(out)
         return 0
-    except Exception:
+    except Exception as exc:
+        _warn("precompact failed; no brief was written", exc)
         return 0
 
 
@@ -284,7 +354,8 @@ def _cmd_postcompact(args: argparse.Namespace) -> int:
             brief = Brief.from_json(handle.read())
         print(json.dumps(postcompact_payload(brief, args.event), ensure_ascii=False))
         return 0
-    except Exception:
+    except Exception as exc:
+        _warn("postcompact failed; nothing was re-injected", exc)
         return 0
 
 
@@ -298,14 +369,18 @@ def build_parser() -> argparse.ArgumentParser:
     markers = sub.add_parser("markers", help="print the confidence-marker instruction")
     markers.set_defaults(func=_cmd_markers)
 
-    stats_cmd = sub.add_parser("stats", help="report what the layer did across every stored brief")
+    stats_cmd = sub.add_parser(
+        "stats", help="report what the layer did across every stored brief"
+    )
     stats_cmd.add_argument("--json", action="store_true")
     stats_cmd.set_defaults(func=_cmd_stats)
 
     recall_cmd = sub.add_parser("recall", help="search every stored brief and lesson")
     recall_cmd.add_argument("query")
     recall_cmd.add_argument("--limit", type=int, default=10)
-    recall_cmd.add_argument("--budget", type=int, default=0, help="cap the result set in characters")
+    recall_cmd.add_argument(
+        "--budget", type=int, default=0, help="cap the result set in characters"
+    )
     recall_cmd.add_argument("--json", action="store_true")
     recall_cmd.set_defaults(func=_cmd_recall)
 
@@ -323,7 +398,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     postcompact = sub.add_parser("postcompact")
     postcompact.add_argument("--brief")
-    postcompact.add_argument("--event", choices=("SessionStart", "PostCompact"), default="SessionStart")
+    postcompact.add_argument(
+        "--event", choices=("SessionStart", "PostCompact"), default="SessionStart"
+    )
     postcompact.set_defaults(func=_cmd_postcompact)
 
     return parser
