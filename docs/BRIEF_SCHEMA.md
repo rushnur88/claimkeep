@@ -9,9 +9,16 @@ session's high-signal claims, written *before* context compaction and
 re-injected *after*. The benchmark scores how much of the brief survives a
 compaction round.
 
-> Status: **FROZEN 2026-06-21**.
+> Status: **FROZEN 2026-06-21**, additively amended 2026-08-11.
 > Changing the `id` rule or `normalize()` is breaking — both are load-bearing
 > for the consumer's cross-run dedup; do not alter silently.
+>
+> The amendment adds `superseded_by` / `supersedes` on `Claim` and documents
+> `source.budget`. Both were already produced; the document had not caught up,
+> and a contract that does not describe its own output is not a contract.
+> Nothing was removed and no meaning changed, so `schema_version` stays `1`:
+> a consumer written against the original still reads these briefs correctly,
+> it simply ignores two fields.
 
 ---
 
@@ -21,7 +28,7 @@ compaction round.
 {
   "schema_version": 1,
   "created_utc": "<ISO-8601 string, supplied by the caller>",
-  "source": { "agent": "<str>", "session": "<str|null>" },
+  "source": { "agent": "<str>", "session": "<str|null>", "budget": "<Budget|absent>" },
   "claims":        [ "<Claim>", "..." ],
   "supplement":    [ "<Supplement>", "..." ],
   "open_threads":  [ "<verbatim str>", "..." ],
@@ -32,6 +39,12 @@ compaction round.
 
 **Required keys:** `schema_version`, `claims`, `supplement`.
 All others are optional and default to `[]` / `null`.
+
+`source.budget` is written when a budget was applied and records what the brief
+cost and what did not fit: `budget_chars`, `used_chars`, `harvested_claims`,
+`kept_claims`, `harvested_supplement`, `kept_supplement`, `dropped_items`. It is
+diagnostic — a consumer never needs it to read a brief — but `dropped_items > 0`
+is how you learn the budget, not the transcript, decided what survived.
 
 The producer **never reads the wall clock** — `created_utc` and any `ts` are
 supplied by the caller so that a given (transcript, config) pair is fully
@@ -52,13 +65,26 @@ hashed into an `id` and is never scored.
   "topic": "<short str>",
   "source_harvester": "<harvester name, e.g. 'calibration'>",
   "ts": "<ISO-8601 | null>",
-  "source_span": "<verbatim matched line/span | null>"
+  "source_span": "<verbatim matched line/span | null>",
+  "superseded_by": "<id of the claim that replaced this one | null>",
+  "supersedes": "<id of the claim this one replaced | null>"
 }
 ```
 
 - Claims are deduped by `id` and **superseded by `topic`**: within a topic the
-  **last-added (newest) claim wins** and earlier same-topic claims are dropped.
-  An explicit retraction flag is out of scope for v1.
+  **last-added (newest) claim wins**. Earlier same-topic claims are **kept**,
+  each carrying `superseded_by` pointing at the winner, and the winner carries
+  `supersedes` pointing back. A consumer that only wants current state filters
+  on `superseded_by is None`.
+- Dropping the earlier claim instead would make a retraction indistinguishable
+  from a fact that was never stated — the one thing this format is built to
+  avoid. That is why the two fields exist rather than a delete.
+- `topic` is the identity a claim is corrected under, so it must survive a
+  restatement. It is derived from subject and predicate, not from the value
+  being asserted: "the retry ceiling is 5" and "the retry ceiling is 4" share
+  one topic and chain. Sentences that will not parse fall back to a slug of the
+  leading words, which does not chain — a stable-looking key that is wrong
+  would merge unrelated facts into a false correction.
 - `source_span` is **best-effort in v1** (`null` where a harvester cannot supply
   it) — it grounds blind-EXACT scoring.
 
@@ -131,4 +157,4 @@ original casing, so blind-EXACT grounding is unaffected.
 
 ---
 
-*Contract frozen 2026-06-21. First version.*
+*Contract frozen 2026-06-21. Additively amended 2026-08-11: supersession fields and `source.budget` documented; `schema_version` unchanged.*
