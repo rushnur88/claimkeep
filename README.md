@@ -70,7 +70,8 @@ without them the calibration harvester contributes close to nothing, and most of
 it. The lenient score credits the control for paraphrase above a threshold chosen by hand.
 Full method and per-compaction data: `benchmark/`, and the paper below.
 
-Separately, as live telemetry rather than a controlled comparison: on the Codex deployment the
+Separately, as live telemetry rather than a controlled comparison: on a Codex deployment (see
+[integrations/codex/](integrations/codex/)) the
 plugin has written **267 briefs since 22 July, 249 of which carried facts forward (93.3%), 3,564
 claims retained**. That says the mechanism runs and produces non-empty briefs in daily use. It says
 nothing about what the native summary would have kept — only the measurement above does.
@@ -119,6 +120,18 @@ before any text enters a brief (API keys, tokens, private-key blocks, JWTs, bear
 `AWS_SECRET_ACCESS_KEY` — a high-entropy blob introduced by a secret word, and emails), on by
 default via `Config.redact`. It targets well-known shapes and is defense in depth, not a
 guarantee — it is not a reason to paste credentials into a session.
+
+## Codex CLI
+
+ClaimKeep is built for Claude Code, which fires `PreCompact` and `SessionStart`. Codex CLI has
+neither hook, so [`integrations/codex/`](integrations/codex/) supplies both: it harvests when
+`turn.completed.usage.input_tokens` crosses a threshold, and injects the newest brief into the
+`AGENTS.md` block Codex reads on every run. The package itself is used unchanged — the bridge
+shells out to the same `claimkeep precompact` the Claude Code hook does, so fixes reach both paths
+at once.
+
+Stdlib only, seven tests, verified against Codex CLI 0.145.0. Setup and the two call sites are in
+[integrations/codex/README.md](integrations/codex/README.md).
 
 ## Verify it works
 

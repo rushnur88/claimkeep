@@ -37,6 +37,20 @@ jobs:
           CLAIMKEEP_BRIEF_DIR=/tmp/ck-ci CLAUDE_HOOK_EVENT_NAME=PostCompact \
             ./scripts/postcompact.sh <<< '{}' | grep -q additionalContext
 
+      - name: Codex bridge
+        # Its end-to-end test skips itself when it cannot locate the package, so
+        # assert the count as well — a silent skip here would hide the only test
+        # that exercises harvest and render together.
+        run: |
+          set -euo pipefail
+          cd integrations/codex
+          out=$(python -m unittest test_codex_adapter 2>&1)
+          echo "$out" | tail -3
+          # "skipped=" appears only in the summary line; a test *named* ..._skipped
+          # must not trip this.
+          echo "$out" | grep -q "skipped=" && { echo "e2e test skipped - package not found"; exit 1; }
+          echo "$out" | grep -q "^OK$" || { echo "bridge tests failed"; exit 1; }
+
       - name: Install with pip and run the CLI
         run: |
           set -euo pipefail
