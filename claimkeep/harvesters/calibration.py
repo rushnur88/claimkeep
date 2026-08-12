@@ -9,9 +9,20 @@ from ..brief import Claim
 from ..config import Config
 from .base import Harvester
 
+# Any script, not just Latin. The old class was [A-Za-z0-9_./#-], so a sentence
+# written entirely in Cyrillic — or Greek, Hebrew, Chinese — matched no words at
+# all and every such claim fell back to the literal topic "claim". Sharing one
+# topic is not harmless: dedup treats a topic as one subject restated over time,
+# so unrelated facts marked each other superseded. Three Russian statements went
+# in and two came back flagged as retracted by the third.
+#
+# `[^\W_]` is "word character except underscore" under Unicode, which covers
+# every script; the explicit punctuation keeps paths and versions intact.
+_SLUG_WORD = re.compile(r"[^\W_]+(?:[._/#-][^\W_]+)*|[A-Za-z0-9_./#-]+", re.UNICODE)
+
 
 def _slug_topic(text: str) -> str:
-    words = re.findall(r"[A-Za-z0-9_./#-]+", text)[:6]
+    words = _SLUG_WORD.findall(text)[:6]
     slug = "-".join(word.casefold() for word in words).strip("-")
     return slug or "claim"
 

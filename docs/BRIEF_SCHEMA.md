@@ -85,6 +85,15 @@ hashed into an `id` and is never scored.
   one topic and chain. Sentences that will not parse fall back to a slug of the
   leading words, which does not chain — a stable-looking key that is wrong
   would merge unrelated facts into a false correction.
+- **Non-Latin text takes that fallback.** The subject/predicate parser is
+  English-only, so a claim in Russian, Greek, Hebrew or Chinese gets the slug.
+  The slug is Unicode-aware, so each statement keeps a topic of its own and
+  unrelated facts stay unrelated — but because the slug contains the asserted
+  value, a correction in those languages does **not** chain: "порог равен 5" and
+  "порог равен 4" are two live claims, not one superseding the other. That is
+  the safe half of the trade. A false retraction tells the agent a true fact was
+  overturned; a missing link only withholds a hint, and the confidences still
+  differ. Chaining outside English needs a morphological parser and is not in v1.
 - `source_span` is **best-effort in v1** (`null` where a harvester cannot supply
   it) — it grounds blind-EXACT scoring.
 
