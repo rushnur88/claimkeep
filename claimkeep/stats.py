@@ -209,6 +209,14 @@ def render(report: Dict[str, Any]) -> str:
     # line printed "not measurable".
     if report.get("retractions_measurable", report["retractions"] is not None):
         lines.append(f"Retractions: {report['retractions']}")
+    elif not report["claims_total"]:
+        # Unlabelled because there is nothing to label. Blaming a foreign
+        # collector here sends the reader hunting for a problem that is not there.
+        lines.append(
+            "Retractions: not measurable — these briefs hold no claims at all,"
+        )
+        lines.append("  so there was nothing to label. The supplement floor may still")
+        lines.append("  have caught paths and ids; see below.")
     else:
         lines.append("Retractions: not measurable — no claim carries a harvester")
         lines.append("  label, so these briefs were written by a different collector.")
