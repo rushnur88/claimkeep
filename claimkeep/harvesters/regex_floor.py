@@ -9,13 +9,23 @@ from ..brief import Supplement, normalize
 from ..config import Config
 from .base import Harvester
 
-
-PATH_RE = re.compile(r"(?<![\w])(?:~|\.)?/[A-Za-z0-9._~@%+=:,/-]+|(?<![\w])(?:[A-Za-z0-9_.-]+/){1,}[A-Za-z0-9._~@%+=:,-]+")
-UUID_RE = re.compile(r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b")
+PATH_RE = re.compile(
+    r"(?<![\w])(?:~|\.)?/[A-Za-z0-9._~@%+=:,/-]+|(?<![\w])(?:[A-Za-z0-9_.-]+/){1,}[A-Za-z0-9._~@%+=:,-]+"
+)
+UUID_RE = re.compile(
+    r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
+)
 HEX_RE = re.compile(r"\b[0-9a-fA-F]{7,40}\b")
 ISSUE_RE = re.compile(r"(?i)(?:\bobs\s+#\d+\b|#\d+\b)")
+# The Russian stems are here for the same reason the tokenizer is Unicode-aware:
+# an agent working in Russian writes "РЕШЕНИЕ:" and "ВЫВОД:", and a latin-only
+# pattern dropped every one of them — the floor exists precisely to catch the
+# lines nobody marked, and it was catching none of them in half the fleet.
+# Stems, not full words, so the case endings (решение/решено/решили) all match.
 DECISION_RE = re.compile(
-    r"(?i)\b(decided|chose|going with|will use|locked|approved|DECISION)\b|\buse\s+.+?\s+not\s+.+"
+    r"(?i)\b(decided|chose|going with|will use|locked|approved|DECISION)\b"
+    r"|\b(реш(ени[ея]|ено|или|ил|ила)|выбра(ли|л|ла|но)|вывод|договорились|принято)\b"
+    r"|\buse\s+.+?\s+not\s+.+"
 )
 
 
@@ -35,7 +45,9 @@ class RegexFloorHarvester(Harvester):
             if key in seen:
                 return ""
             seen.add(key)
-            items.append(Supplement(text=cleaned, kind=kind, source_harvester=self.name))
+            items.append(
+                Supplement(text=cleaned, kind=kind, source_harvester=self.name)
+            )
             return cleaned
 
         for unit in transcript:

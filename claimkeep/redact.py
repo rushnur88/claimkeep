@@ -50,9 +50,16 @@ _RULES: List[Tuple[Pattern[str], str]] = [
     # "and secret wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY". An AWS secret access key
     # has no recognisable prefix, so the word in front of it is the only signal there
     # is. The 20-character floor keeps ordinary prose ("the secret sauce") out.
+    #
+    # The cue word has to exist in the language the session is written in. This rule
+    # shipped English-only, so "секрет wJalr..." leaked in a Russian transcript while
+    # the identical English sentence was masked — a redaction rule that depends on
+    # the operator's language is not a redaction rule.
     (
         re.compile(
-            r"(?i)\b(secret|token|password|passphrase|credential)s?\s+([A-Za-z0-9+/_\-]{20,}={0,2})\b"
+            r"(?i)\b(secret|token|password|passphrase|credential"
+            r"|секрет|токен|пароль|ключ|креденшл)\w*\s+"
+            r"([A-Za-z0-9+/_\-]{20,}={0,2})\b"
         ),
         r"\1 [REDACTED:secret]",
     ),

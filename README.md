@@ -1,7 +1,7 @@
 # ClaimKeep
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-138%20passing-brightgreen.svg)](tests)
+[![Tests](https://img.shields.io/badge/tests-148%20passing-brightgreen.svg)](tests)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](pyproject.toml)
 [![Paper](https://img.shields.io/badge/paper-Zenodo-1682D4.svg)](https://zenodo.org/records/20819013)
 
@@ -15,7 +15,8 @@ https://github.com/user-attachments/assets/a0a6700e-8643-48a9-bc45-15a7f6c327fa
 
 The idea it rests on: a calibration marker such as `Ship Friday [C:80%]` turns any factual sentence
 into a claim the agent already selected and already rated. No guessing what mattered. A marker-free
-regex floor still catches paths, ids, and decision lines when a transcript has no markers at all.
+regex floor still catches paths, ids, and decision lines when a transcript has no markers at all,
+in English or Russian — the harvesters, the tokenizer and the redaction cues all work outside Latin.
 The brief contract is frozen and documented in [docs/BRIEF_SCHEMA.md](docs/BRIEF_SCHEMA.md).
 
 ![A real run: the claim is harvested before compaction and comes back verbatim afterwards](docs/claimkeep-demo.gif)
@@ -119,7 +120,7 @@ Both hooks are fail-open on purpose — a memory layer must never block compacti
 exit `0`. That means a broken install cannot stall your session, but it also means you should run
 the two checks above once rather than assume silence equals success. Errors go to stderr.
 
-Full test suite: `python3 -m unittest discover -s tests` (138 tests, standard library only).
+Full test suite: `python3 -m unittest discover -s tests` (148 tests, standard library only).
 
 ## See what it did
 

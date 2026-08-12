@@ -53,12 +53,14 @@ RECENCY_BOOST = float(os.environ.get("CLAIMKEEP_RECENCY_BOOST", "0.25"))
 # 0.812 / R@10 0.956, at 1.0 it scores 0.824 / 0.958.
 PARENT_BOOST = float(os.environ.get("CLAIMKEEP_PARENT_BOOST", "1.0"))
 
-# Cyrillic is in the class deliberately. Measured 2026-08-10: with a
-# latin-only tokenizer, a corpus written in Russian tokenized to nothing and
-# every Russian query returned zero results — the read path was not weak on
-# Russian, it was blind to it. Casefold handles the case mapping for both
-# scripts, so one class covers them.
-TOKEN_RE = re.compile(r"[a-z0-9\u0400-\u04ff]+")
+# Any script. Measured 2026-08-10: with a latin-only tokenizer a corpus written
+# in Russian tokenized to nothing and every Russian query returned zero results —
+# the read path was not weak on Russian, it was blind to it. That was first fixed
+# by naming the Cyrillic range, which left Greek, Hebrew and Chinese exactly as
+# blind; listing scripts one at a time only moves the blind spot to the next
+# language. `[^\W_]` is "word character except underscore" under Unicode and
+# covers every script at once. Casefold handles case mapping where a script has it.
+TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
 
 _MONTHS = ("january", "february", "march", "april", "may", "june", "july",
            "august", "september", "october", "november", "december")
