@@ -31,9 +31,9 @@ compaction round.
   "source": { "agent": "<str>", "session": "<str|null>", "budget": "<Budget|absent>" },
   "claims":        [ "<Claim>", "..." ],
   "supplement":    [ "<Supplement>", "..." ],
-  "open_threads":  [ "<verbatim str>", "..." ],
-  "last_user_ask": "<str|null>",
-  "narrative":     [ "<str>", "..." ]
+  "open_threads":  [ "<verbatim str>", "..." ],   // reserved, see below
+  "last_user_ask": "<str|null>",                  // reserved, see below
+  "narrative":     [ "<str>", "..." ]             // reserved, see below
 }
 ```
 
@@ -137,8 +137,14 @@ original casing, so blind-EXACT grounding is unaffected.
 ## 5. Scoring scope (consumer contract)
 
 - Retention is scored **only** against `claims[]` + `supplement[]`.
-- `open_threads`, `last_user_ask`, `narrative` are carried for rehydration UX and
-  are **not** scored.
+- `open_threads`, `last_user_ask`, `narrative` are **reserved and not produced**.
+  They are part of the shape so a later version can fill them without a schema
+  bump, and a consumer that reads them will get `[]` / `null` from every brief
+  this version writes — not because the session had no open threads, but because
+  no harvester populates the field yet. Do not build a display that implies
+  otherwise; a reader who sees an empty "open threads" section concludes the
+  session had none, which is a claim this format is not making. They are carried
+  for rehydration UX and are **not** scored.
 - Retention SHOULD be reported **split by `source_harvester`** (calibration vs
   floor). That split is the headline result: it tests whether an agent's own
   calibration discipline doubles as memory, and quantifies the marker-free floor.
