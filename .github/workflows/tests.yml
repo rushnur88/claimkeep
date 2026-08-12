@@ -47,8 +47,11 @@ jobs:
         # "standard library only" is in the README; check it rather than trust it.
         run: |
           python - <<'PY'
-          import ast, pathlib, sys
-          stdlib = sys.stdlib_module_names
+          import ast, importlib.util, pathlib, sysconfig
+
+          # sys.stdlib_module_names is 3.10+, and this package supports 3.9.
+          # Resolving each import and looking at where it lives works everywhere.
+          site = sysconfig.get_paths()["purelib"]
           bad = []
           for f in pathlib.Path("claimkeep").rglob("*.py"):
               for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
@@ -57,7 +60,13 @@ jobs:
                       names = [a.name.split(".")[0] for a in node.names]
                   elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                       names = [node.module.split(".")[0]]
-                  bad += [(str(f), n) for n in names if n not in stdlib and n != "claimkeep"]
+                  for n in names:
+                      if n == "claimkeep":
+                          continue
+                      spec = importlib.util.find_spec(n)
+                      origin = getattr(spec, "origin", None) or ""
+                      if origin.startswith(site) or "site-packages" in origin:
+                          bad.append((str(f), n, origin))
           if bad:
               print("third-party imports found:", bad)
               raise SystemExit(1)
@@ -67,9 +76,26 @@ jobs:
       - name: Benchmarks run from a clone
         # They shipped with absolute paths from one machine and could not start
         # anywhere else, while the changelog offered them as reproduction steps.
+        # --help only proves anything for the argparse ones; stream_lme.py takes a
+        # positional path and would read "--help" as a filename. For those, import
+        # the module instead: that is where the sys.path resolution actually fails.
         run: |
           set -euo pipefail
           for f in benchmark/russian_recall.py benchmark/longmemeval/*.py; do
-            python "$f" --help > /dev/null || { echo "$f cannot start"; exit 1; }
+            if grep -q argparse "$f"; then
+              python "$f" --help > /dev/null || { echo "$f cannot start"; exit 1; }
+            else
+              python - "$f" <<'PY' || { echo "$f cannot be imported"; exit 1; }
+          import importlib.util, pathlib, sys
+          path = pathlib.Path(sys.argv[1])
+          spec = importlib.util.spec_from_file_location(path.stem, path)
+          module = importlib.util.module_from_spec(spec)
+          sys.argv = [str(path)]  # the module reads argv at import time
+          try:
+              spec.loader.exec_module(module)
+          except (SystemExit, IndexError, FileNotFoundError):
+              pass  # wants arguments we are not giving it; imports resolved fine
+          PY
+            fi
           done
           echo "all benchmark entrypoints start"
