@@ -27,20 +27,53 @@ reconstruct by reasoning, and the parts that turn a resumed session into a re-in
 sessions are short, you will never notice this. If you run long refactors, multi-day debugging, or
 agent pipelines that compact several times a day, you have paid for it repeatedly.
 
-Measured in production, not on a benchmark: **at least 326 compactions survived on two independent
-platforms — 283 of them carried facts forward (86.8%), with one confirmed loss.**
-Codex platform: 237 compactions, 84.4% carried facts, 2842 claims retained, one agent.
-Claude Code fleet: 89 compactions, 93.3% carried facts, one real loss in 89 (98.9% clean).
-"At least" is literal: only 5 of the 7 fleet agents write the counters, so the fleet figure is a
-floor rather than a total. Loss is graded on the fleet side only — the Codex side counts
-compactions and claims but does not classify a zero. Measurement windows are 19 and 8 days, ending
-2026-08-10; the mechanism has been running longer than the instrumentation that counts it.
+**Against the real control, at equal budget: 17.8% → 35.6% of frozen probes recovered.**
 
-Read the figures above as a property of this setup rather than of the tool on its own: every agent
-measured here already carries calibration markers in its system prompt, and marker density is what
-the mechanism feeds on. A clean install, with no markers in the prompt, is a different environment;
-that second figure is being measured separately and is not in this README yet. Until it is, treat
-these numbers as an instrumented-fleet result, not as what a fresh install should expect.
+The control is not a simulation. Claude Code writes its own compaction summary to the transcript
+(`compact_boundary`, `isCompactSummary`), so the naive arm was already on disk — 70 real compactions
+across 37 transcripts, 1462 probes frozen before any result was seen. Each arm was given exactly
+the number of characters the native summary spent on that same compaction (median 15,093), because
+an unbounded brief is not a comparison.
+
+| score | native summary | ClaimKeep | delta |
+|---|---|---|---|
+| strict | 17.8% | **35.6%** | **+17.8 points** |
+| lenient to the control | 31.5% | 42.7% | +11.2 points |
+
+Roughly a doubling of strict retention. It is not uniform: **45 wins, 13 draws, 12 losses** out of
+70, worst case −28.6 points. Median +11.6, mean +14.6.
+
+By probe family, strict, at equal budget:
+
+| family | native | ClaimKeep | |
+|---|---|---|---|
+| `path` | 73% | 84% | biased toward the plugin — regex ≈ harvester |
+| `hash` | 58% | 86% | biased toward the plugin |
+| `claim` (marked `[C:NN%]`) | 7% | 39% | the native summary barely carries these |
+| `fact` (bare number + word) | 8% | 19% | **adversarial** — nothing in the plugin targets these |
+
+The `fact` family was added to be unwinnable by construction: `regex_floor` explicitly skips bare
+numbers and `calibration` needs a marker. The plugin still wins there, but only just.
+
+**The first version of this number was +59 points, and it was wrong three ways.** Matches were
+counted anywhere in the output rather than co-located in one item, so "12" scored inside
+"2026-08-10". The arms were not the same size — the native summary spent 15,093 characters and the
+unbounded brief 3,541,462, a factor of 235. And the path and hash probes were extracted with the
+same class of regex the harvester uses, which is how they reached 100%. Fixing all three took the
+result from +59 to +17.8 and the adversarial family from 74% down to 19%. The unbounded ceiling is
++49 points; that is an upper bound on the mechanism, not a property of the product, because a brief
+that size cannot be re-injected into the window it exists to restore.
+
+Limits, since they decide whether the number transfers: one corpus, one agent, so generalisation is
+untested. The transcripts are dense with `[C:NN%]` markers, which a fresh install will not have —
+without them the calibration harvester contributes close to nothing, and most of the gain rides on
+it. The lenient score credits the control for paraphrase above a threshold chosen by hand.
+Full method and per-compaction data: `benchmark/`, and the paper below.
+
+Separately, as live telemetry rather than a controlled comparison: on the Codex deployment the
+plugin has written **267 briefs since 22 July, 249 of which carried facts forward (93.3%), 3,564
+claims retained**. That says the mechanism runs and produces non-empty briefs in daily use. It says
+nothing about what the native summary would have kept — only the measurement above does.
 
 Method and defensible lift numbers are in the paper, *"Continuous Memory for Multi-Agent
 Infrastructure: A Calibration-Density Law for Surviving Context Compaction"* (Ravshan Nuraliev,
