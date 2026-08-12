@@ -95,7 +95,7 @@ jobs:
         # the module instead: that is where the sys.path resolution actually fails.
         run: |
           set -euo pipefail
-          for f in benchmark/russian_recall.py benchmark/longmemeval/*.py; do
+          for f in benchmark/russian_recall.py benchmark/natural_experiment.py benchmark/longmemeval/*.py; do
             if grep -q argparse "$f"; then
               python "$f" --help > /dev/null || { echo "$f cannot start"; exit 1; }
             else

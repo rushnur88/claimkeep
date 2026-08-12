@@ -36,8 +36,28 @@ pre-registered measure on **their own** corpus; v2 aggregates N runs into a
 retention distribution (mean ± CI) and a pre-registered generalization test.
 Open the benchmark, keep the fleet orchestration.
 
+## The natural experiment (README numbers)
+
+`natural_experiment.py` is where both headline figures come from. It needs no
+probe file and no control run of its own, because Claude Code already writes a
+compaction summary into every transcript — so the naive arm is on disk, produced
+by the same model on the same context, and the comparison is against what you
+actually get today rather than against an empty brief.
+
+```bash
+python natural_experiment.py ~/.claude/projects/<your-project-dir>
+```
+
+Both arms are truncated to the same character budget the native summary spent on
+that compaction. It prints two tables: retention over all probe families, and the
+marker-free arms — the same transcripts with every `[C:NN%]` stripped before
+harvesting, which is what a fresh install sees. Probes are frozen from the
+original text in both cases, so stripping markers cannot change which facts are
+being scored.
+
 ## Files
 
+- `natural_experiment.py` — the three-arm harness behind the README numbers.
 - `score.py` — stdlib-only scorer (no third-party deps, no wall clock).
 - `probes.example.json` — example frozen probe set + shape.
 

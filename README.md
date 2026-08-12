@@ -27,7 +27,9 @@ reconstruct by reasoning, and the parts that turn a resumed session into a re-in
 sessions are short, you will never notice this. If you run long refactors, multi-day debugging, or
 agent pipelines that compact several times a day, you have paid for it repeatedly.
 
-**Against the real control, at equal budget: 17.8% → 35.6% of frozen probes recovered.**
+**Against the real control, at equal budget: 17.8% → 35.6% of frozen probes recovered** — on
+transcripts where the agent marks its confidence. Without that convention the same measurement gives
+[+2.7 points](#what-a-fresh-install-gets), and the honest version of this pitch is further down.
 
 The control is not a simulation. Claude Code writes its own compaction summary to the transcript
 (`compact_boundary`, `isCompactSummary`), so the naive arm was already on disk — 70 real compactions
@@ -66,9 +68,45 @@ that size cannot be re-injected into the window it exists to restore.
 
 Limits, since they decide whether the number transfers: one corpus, one agent, so generalisation is
 untested. The transcripts are dense with `[C:NN%]` markers, which a fresh install will not have —
-without them the calibration harvester contributes close to nothing, and most of the gain rides on
-it. The lenient score credits the control for paraphrase above a threshold chosen by hand.
-Full method and per-compaction data: `benchmark/`, and the paper below.
+that cost is measured directly below rather than left as a caveat. The lenient score credits the
+control for paraphrase above a threshold chosen by hand. Full method and per-compaction data:
+`benchmark/`, and the paper below.
+
+### What a fresh install gets
+
+Markers stripped from the text the harvesters see; probes frozen from the original text so the arms
+stay comparable; three arms in one pass on one package version. The `claim` family is excluded — it
+is marker-defined by construction — so these baselines are not the table above and only compare
+within this block. 68 compactions, 1,104 probes.
+
+| arm | overall | `fact` | `hash` | `path` |
+|---|---|---|---|---|
+| native summary | 21.4% | 7.3% | 57.5% | 71.9% |
+| ClaimKeep, markers present | 37.0% | 20.9% | 85.5% | 80.2% |
+| ClaimKeep, markers stripped | 24.1% | 1.9% | 87.6% | 90.6% |
+
+**+15.6 points with markers, +2.7 without — 83% of the lift rides on the convention.** Per
+compaction the marker-free arm is 21 wins, 25 draws, 22 losses, median exactly 0.0, worst −54.5.
+
+The split matters more than the total. With no markers the whole budget goes to `regex_floor`, so
+paths and hashes survive *better* than in the marked arm. What collapses is prose: bare
+"number + word" facts fall to 1.9%, below the native summary, because a brief made of paths, ids and
+decision lines has nowhere to put them.
+
+So the claim is not "install this and remember more". It is that the plugin makes a marker
+convention pay: without one it is close to a wash, and a clear win only where what you lose in
+compaction is paths, ids and decisions. One limit it cannot escape — the native summary was written
+by a model that could see the markers, and that arm cannot be re-run without them, so if markers
+helped the control, +2.7 is understated.
+
+Both tables come from one script, on your own sessions:
+
+```bash
+python benchmark/natural_experiment.py ~/.claude/projects/<your-project-dir>
+```
+
+It finds the compactions Claude Code already recorded, freezes the probes before scoring, and prints
+the headline and the marker-free arms. Any transcript directory with a few compactions in it works.
 
 Separately, as live telemetry rather than a controlled comparison: on a Codex deployment (see
 [integrations/codex/](integrations/codex/)) the
