@@ -45,9 +45,12 @@ import argparse
 import json
 import re
 import sqlite3
+import pathlib
 import sys
 
-sys.path.insert(0, "/home/aria/.aria/agent-stream/shared/claimkeep")
+# Run from a clone: resolve the package relative to this file instead of an
+# absolute path from the machine the benchmark was first written on.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
 
 from claimkeep import retrieve
 from claimkeep.retrieve import Document
@@ -115,7 +118,12 @@ def measure(items, pattern):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", default="/state/agent/home/.aria/bots/selfimp/claude-mem/claude-mem.db")
+    ap.add_argument(
+        "--db",
+        required=True,
+        help="SQLite store holding the corpus. Required: this used to default to an "
+        "absolute path on the author's machine, so the script ran nowhere else.",
+    )
     ap.add_argument("--limit", type=int, default=300)
     args = ap.parse_args()
 

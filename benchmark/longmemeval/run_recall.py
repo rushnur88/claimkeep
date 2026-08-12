@@ -18,9 +18,12 @@ kept, and the harvesters were built for agent transcripts, not human chat.
 
 import argparse
 import json
+import pathlib
 import sys
 
-sys.path.insert(0, "/home/aria/.aria/agent-stream/shared/claimkeep")
+# Run from a clone: resolve the package relative to this file instead of an
+# absolute path from the machine the benchmark was first written on.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from claimkeep.config import default_config
 from claimkeep.harvesters import get_harvester

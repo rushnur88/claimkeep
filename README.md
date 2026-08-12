@@ -1,7 +1,7 @@
 # ClaimKeep
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-148%20passing-brightgreen.svg)](tests)
+[![tests](https://github.com/rushnur88/claimkeep/actions/workflows/tests.yml/badge.svg)](https://github.com/rushnur88/claimkeep/actions/workflows/tests.yml)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](pyproject.toml)
 [![Paper](https://img.shields.io/badge/paper-Zenodo-1682D4.svg)](https://zenodo.org/records/20819013)
 
@@ -121,6 +121,11 @@ exit `0`. That means a broken install cannot stall your session, but it also mea
 the two checks above once rather than assume silence equals success. Errors go to stderr.
 
 Full test suite: `python3 -m unittest discover -s tests` (148 tests, standard library only).
+
+The benchmarks run from a clone too — `python3 benchmark/russian_recall.py --db <store>`
+and the scripts under `benchmark/longmemeval/`. They used to carry absolute paths from the
+machine they were written on and could not start anywhere else, which made the numbers above
+unreproducible by anyone but the author. CI now starts every one of them on each push.
 
 ## See what it did
 

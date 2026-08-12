@@ -1,0 +1,75 @@
+name: tests
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # The package claims Python 3.9+ and zero dependencies. Both are only claims
+    # until something other than the author's laptop runs them.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.11", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Run the suite
+        run: python -m unittest discover -s tests -v
+
+      - name: Verify the hooks work from a clone
+        # Exactly the two commands the README tells a new user to run.
+        run: |
+          set -euo pipefail
+          CLAIMKEEP_BRIEF_DIR=/tmp/ck-ci ./scripts/precompact.sh <<'EOF'
+          {"transcript_path": "examples/sample_transcript.jsonl", "session_id": "ci"}
+          EOF
+          test -n "$(ls -A /tmp/ck-ci)" || { echo "precompact wrote no brief"; exit 1; }
+          CLAIMKEEP_BRIEF_DIR=/tmp/ck-ci CLAUDE_HOOK_EVENT_NAME=PostCompact \
+            ./scripts/postcompact.sh <<< '{}' | grep -q additionalContext
+
+      - name: Install with pip and run the CLI
+        run: |
+          set -euo pipefail
+          pip install --quiet .
+          claimkeep version
+
+      - name: No third-party imports in the package
+        # "standard library only" is in the README; check it rather than trust it.
+        run: |
+          python - <<'PY'
+          import ast, pathlib, sys
+          stdlib = sys.stdlib_module_names
+          bad = []
+          for f in pathlib.Path("claimkeep").rglob("*.py"):
+              for node in ast.walk(ast.parse(f.read_text(encoding="utf-8"))):
+                  names = []
+                  if isinstance(node, ast.Import):
+                      names = [a.name.split(".")[0] for a in node.names]
+                  elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                      names = [node.module.split(".")[0]]
+                  bad += [(str(f), n) for n in names if n not in stdlib and n != "claimkeep"]
+          if bad:
+              print("third-party imports found:", bad)
+              raise SystemExit(1)
+          print("stdlib only: confirmed")
+          PY
+
+      - name: Benchmarks run from a clone
+        # They shipped with absolute paths from one machine and could not start
+        # anywhere else, while the changelog offered them as reproduction steps.
+        run: |
+          set -euo pipefail
+          for f in benchmark/russian_recall.py benchmark/longmemeval/*.py; do
+            python "$f" --help > /dev/null || { echo "$f cannot start"; exit 1; }
+          done
+          echo "all benchmark entrypoints start"

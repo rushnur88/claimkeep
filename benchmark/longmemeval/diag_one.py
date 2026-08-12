@@ -9,9 +9,12 @@ it was kept, and which of the question's terms it carried.
 
 import argparse
 import json
+import pathlib
 import sys
 
-sys.path.insert(0, "/home/aria/.aria/agent-stream/shared/claimkeep")
+# Run from a clone: resolve the package relative to this file instead of an
+# absolute path from the machine the benchmark was first written on.
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[2]))
 
 from claimkeep.config import default_config
 from claimkeep.harvesters import get_harvester
@@ -28,7 +31,11 @@ STOP = {
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--data", default="/state/agent/home/lme/data/longmemeval_s.json")
+    ap.add_argument(
+        "--data",
+        required=True,
+        help="Path to longmemeval_s.json (download it; see benchmark/README.md).",
+    )
     ap.add_argument("--type", default="single-session-preference")
     ap.add_argument("--index", type=int, default=0, help="nth question of that type")
     ap.add_argument("--harvesters", default="atomic")
