@@ -19,7 +19,7 @@ from .harvesters.retraction import refutes
 from .lessons import Lesson, LessonStore
 from .prompt import marker_instruction
 from .redact import redact
-from .rehydrate import postcompact_payload
+from .rehydrate import asserts_live_state, postcompact_payload
 from .retrieve import recall
 from .select import apply_budget
 from .stats import collect as collect_stats
@@ -496,9 +496,19 @@ def _cmd_recall_hook(args: argparse.Namespace) -> int:
             # trimming meant the hook silently produced nothing at all.
             if len(text) > RECALL_ITEM_CHARS:
                 text = text[:RECALL_ITEM_CHARS].rstrip() + "…"
-            if used + len(text) > RECALL_BUDGET:
+            # Recall reaches further back than any brief does, so provenance
+            # matters more here, not less: these lines have no shared header to
+            # date them the way a brief's claims do.
+            marks = []
+            recorded = (row["doc"].ts or "")[:10]
+            if recorded:
+                marks.append(recorded)
+            if asserts_live_state(text):
+                marks.append("VERIFY CURRENT")
+            prefix = "- [%s] " % " · ".join(marks) if marks else "- "
+            if used + len(prefix) + len(text) > RECALL_BUDGET:
                 break
-            lines.append("- " + text)
+            lines.append(prefix + text)
             used += len(text)
         if not lines:
             return 0

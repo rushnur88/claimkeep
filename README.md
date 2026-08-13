@@ -167,13 +167,24 @@ claims that assert a live state — a version, a deployment, a service status, a
 Treat the first kind as memory and the second as a record of a conversation. For anything marked
 `VERIFY CURRENT`, check the source before acting on it.
 
-The mark is deliberately narrow. Tuned on a store of 1,266 claims, it fires on 19% of them — an
-early version reached 67%, and a mark on two claims in three is a mark nobody reads. Two things did
-that damage. Russian stems matched inside longer words, so `порт` fired on *паспортов*; every
-alternative is now anchored at a word start. And "сейчас" turned out to head half of all matches,
-almost always as "сейчас собираю…" — a description of what someone was doing, not a value that goes
-quietly out of date. It was dropped. A statement like "сейчас версия 0.2.0" still marks, on
-`версия`.
+The mark is deliberately narrow, and what it is tuned for is precision, not coverage. A warning that
+fires on two claims in three is background noise, and nobody rechecks anything because of it — so a
+rare useful alarm beats a constant one.
+
+Measured on a day of production claims, hand-labelled one by one: it marks **76 of 325** claims
+(23%), and **70 of those 76 marks are right** — precision 92%. The six that are wrong are sentences
+about an immutable commit ("commit `0ab69cf` creates a separate claim per marker"), results of a
+one-off probe, and one quoted example. Recall is the side that pays: on a sample of the unmarked,
+roughly half also assert a live state and are missed. That is the intended trade, not an oversight.
+
+Four rounds of narrowing got there, each from measurement rather than reasoning. The first version
+fired on 67%: Russian stems matched inside longer words, so `порт` fired on *паспортов* — every
+alternative is now anchored at a word start. "сейчас" headed half of what remained, almost always as
+"сейчас собираю…", a description of what someone was doing; it was dropped, and "сейчас версия
+0.2.0" still marks, on `версия`. A bare number counted as a value, so "checked 12/12" and "release
+guards" marked; only versions, hashes and ports count now. And a sentence that opens by announcing a
+plan or giving an order ("Проверю, что накатилось…") asserts nothing about the present, whatever
+version it names afterwards.
 
 The marks cost almost nothing, and the numbers above include what they do cost. A first version
 repeated the same date on every line and moved the headline from +15.9 to +13.0 points — 25 wasted
@@ -196,6 +207,11 @@ words the question is about — measured on a 4,165-document store, that keeps
 "render preset passport" answered and leaves "thanks, all good" alone. Matching
 is on word prefixes so an inflected language still works, superseded claims
 never surface, and each line is cut to 200 characters.
+
+Recalled lines carry the same provenance the brief does, and need it more: a
+recall reaches across every stored brief, so a claim from six weeks ago arrives
+looking exactly like one from this morning. Each line leads with the date it was
+recorded and, where it asserts a live state, `VERIFY CURRENT`.
 
 The cost of the trade is silence on questions whose wording missed: it prefers a
 false negative to a false positive. Tuning, if you want it:

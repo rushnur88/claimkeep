@@ -108,5 +108,67 @@ class TestVerifyCurrentMarking(unittest.TestCase):
         self.assertIn("recorded", ctx)
 
 
+class TestFalsePositivesFoundOnRealData(unittest.TestCase):
+    """The three that a production corpus produced and reasoning did not.
+
+    Precision matters more than coverage for this mark: one that fires on two
+    claims in three is background noise, and nobody rechecks anything because of
+    it. Each case below was measured, not imagined, and each cut the firing rate
+    on 1,266 stored claims.
+    """
+
+    def assert_quiet(self, text):
+        from claimkeep.rehydrate import asserts_live_state
+
+        self.assertFalse(asserts_live_state(text), text)
+
+    def assert_marks(self, text):
+        from claimkeep.rehydrate import asserts_live_state
+
+        self.assertTrue(asserts_live_state(text), text)
+
+    def test_a_stem_does_not_match_inside_a_longer_word(self):
+        # `порт` inside "паспортов", `уже` inside "нужен". This alone marked 67%.
+        self.assert_quiet("Stage 3 ещё идёт: выбор паспортов реальными preview")
+        self.assert_quiet("Нужен ещё один прогон перед сборкой")
+
+    def test_an_action_in_progress_is_not_a_live_value(self):
+        # "сейчас собираю…" headed half of all matches at 40% firing: it says
+        # what someone was doing, not a value that goes quietly out of date.
+        self.assert_quiet("Сейчас собираю переносимый пакет из всех 18 реальных MP4")
+
+    def test_a_noun_without_a_value_is_a_remark_about_history(self):
+        self.assert_quiet("За один день версия несколько раз менялась")
+        self.assert_quiet("Мы обсуждали, какой порт удобнее для дашборда")
+
+    def test_the_same_noun_with_a_value_is_a_reading(self):
+        self.assert_marks("Версия сейчас 0.2.0")
+        self.assert_marks("The dashboard port is 3333")
+        self.assert_marks("Latest commit is d8d158b")
+
+    def test_words_that_assert_a_state_on_their_own_still_mark(self):
+        self.assert_marks("pyproject still reports the old number")
+        self.assert_marks("Репозиторий всё ещё на старом коммите")
+        self.assert_marks("The package is currently deployed")
+
+    def test_a_plan_or_an_order_is_not_a_claim_about_state(self):
+        # Both were marked on a day of production claims. A sentence that opens
+        # by saying what someone will do, or telling them to do it, asserts
+        # nothing about now — the version it names is the subject of the work.
+        self.assert_quiet(
+            "Проверю, что именно накатилось: commit и ветку, текущий рендер "
+            "brief, тесты, отсутствие релиза `0.3.2` и живой gateway"
+        )
+        self.assert_quiet(
+            "Проведи полный correctness pass. Работай от commit `bac1793`"
+        )
+        self.assert_quiet("Let me check whether the deployed copy is current")
+
+    def test_the_intent_frame_only_applies_at_the_start(self):
+        # A past-tense report of a finding is not a plan, and the words are
+        # one letter apart: "проверю" announces, "проверил" states.
+        self.assert_marks("Проверил и подтверждаю: текущая версия `0.3.1`")
+
+
 if __name__ == "__main__":
     unittest.main()

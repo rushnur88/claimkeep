@@ -19,28 +19,74 @@ LESSON_TOPIC = "lesson"
 # a service state. These are the claims that go stale silently — the ones that
 # read as current a week after they stopped being true. Both languages, because
 # the harvesters are bilingual.
-_LIVE_STATE = re.compile(
-    # Every alternative is anchored at a word start. Without that, short roots
-    # match inside longer words: "порт" fires on "паспортов" and "уже" on
-    # "нужен", which marked 67% of a production corpus and made the mark
-    # meaningless. Russian stems stay open-ended on the right — the language
-    # inflects — but never on the left.
-    r"(?i)\b(?:current(?:ly)?|latest|still|deployed|active|"
-    r"version|release|commit|port)\b"
+# Words that assert a present state on their own: "still 0644", "currently
+# deployed". Anchored at a word start — without that, short Russian stems match
+# inside longer words, and `порт` firing on "паспортов" marked 67% of a
+# production corpus.
+_STATE_WORD = re.compile(
+    r"(?i)\b(?:currently|still|deployed)\b"
     r"|\b(?:всё ещё|все ещё)\b"
-    r"|\b(?:текущ|развёрнут|развернут|верси|релиз|коммит|порт)\w*",
+    r"|\b(?:развёрнут|развернут)\w*",
+    re.UNICODE,
+)
+
+# Things that *have* a live value. On their own they are just nouns — "версия
+# несколько раз менялась" is a remark about history, not a claim about now — so
+# they only count next to an actual value.
+_STATE_NOUN = re.compile(
+    r"(?i)\b(?:version|release|commit|port|branch|tag|current|latest)\b"
+    r"|\b(?:верси|релиз|коммит|порт|ветк|текущ)\w*",
+    re.UNICODE,
+)
+
+# What makes a noun into a reading: a version, a hash, a port. Not any digit —
+# "Release bundle checked 12/12" and "Stage 4 release guards" both matched a
+# bare number and were marked, though neither states a value that can go stale.
+_VALUE = re.compile(
+    r"\b\d+\.\d+(?:\.\d+)?\b"  # 0.3.1
+    r"|\b[0-9a-f]{7,40}\b"  # d8d158b
+    r"|\b\d{3,6}\b",  # 3333
+    re.UNICODE,
+)
+
+#: How close a value has to sit to the noun to be its value.
+_VALUE_WINDOW = 40
+
+# A sentence that opens by announcing a plan or giving an order is not a claim
+# about state, whatever version or hash it names afterwards: "Проверю, что
+# накатилось: … отсутствие релиза 0.3.2" and "Проведи полный pass, работай от
+# commit bac1793" were both marked on a day's production claims. Removing them
+# cost no true positive in that sample.
+_INTENT_FRAME = re.compile(
+    r"(?i)^\s*(?:да,?\s+)?"
+    r"(?:проверю|проверь|проведи|сделаю|сделай|изучу|изучи|запущу|запусти"
+    r"|начну|начни|i will|let me|please)\b",
     re.UNICODE,
 )
 
 
 def asserts_live_state(text: str) -> bool:
-    """Whether a claim is about the present rather than about what happened.
+    """Whether a claim states something that is true *now* and may stop being so.
 
     Supersession cannot keep these fresh: it matches by topic, a topic comes
     from phrasing, and four sentences about one subject give four keys. So the
     render says which claims to recheck instead of pretending they are current.
+
+    Precision matters more than coverage here. A warning that fires on two
+    claims in three is background noise nobody reads, so a bare noun is not
+    enough: "версия несколько раз менялась" describes history, while "версия
+    0.2.0" is a reading that can go stale.
     """
-    return bool(_LIVE_STATE.search(text or ""))
+    text = text or ""
+    if _INTENT_FRAME.search(text):
+        return False
+    if _STATE_WORD.search(text):
+        return True
+    for noun in _STATE_NOUN.finditer(text):
+        window = text[max(0, noun.start() - _VALUE_WINDOW) : noun.end() + _VALUE_WINDOW]
+        if _VALUE.search(window):
+            return True
+    return False
 
 
 def recorded_on(claim, fallback: str) -> str:
@@ -54,11 +100,13 @@ def render(brief: Brief) -> str:
     if brief.created_utc:
         # One statement of provenance for the whole file: everything below was
         # recorded then unless a line says otherwise.
-        lines.extend([
-            "recorded " + brief.created_utc + " (claims are as of this time "
-            "unless a line says otherwise)",
-            "",
-        ])
+        lines.extend(
+            [
+                "recorded " + brief.created_utc + " (claims are as of this time "
+                "unless a line says otherwise)",
+                "",
+            ]
+        )
 
     def _sorted(items: List) -> List:
         return sorted(

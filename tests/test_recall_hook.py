@@ -90,9 +90,15 @@ class TestRecallHook(unittest.TestCase):
             self.briefs,
             "old",
             [
-                claim("The dashboard port is 3333 and the tunnel forwards it", "a1", "port"),
+                claim(
+                    "The dashboard port is 3333 and the tunnel forwards it",
+                    "a1",
+                    "port",
+                ),
                 claim("The retry ceiling for the watcher is 5 attempts", "a2", "retry"),
-                claim("Supabase service key rotates every ninety days", "a3", "supabase"),
+                claim(
+                    "Supabase service key rotates every ninety days", "a3", "supabase"
+                ),
             ],
         )
 
@@ -127,7 +133,9 @@ class TestRecallHook(unittest.TestCase):
             "newer",
             [
                 claim("The webhook endpoint moved to 8888", "b1", "webhook"),
-                claim("The webhook endpoint is 7777", "b2", "webhook-old", superseded="b1"),
+                claim(
+                    "The webhook endpoint is 7777", "b2", "webhook-old", superseded="b1"
+                ),
             ],
         )
         ctx = context_of(run_hook(self.briefs, "which webhook endpoint do we use"))
@@ -159,6 +167,50 @@ class TestRecallHook(unittest.TestCase):
 
     def test_an_empty_prompt_is_not_a_search(self):
         self.assertEqual(context_of(run_hook(self.briefs, "")), "")
+
+
+class TestRecalledLinesCarryProvenance(unittest.TestCase):
+    """A recalled line needs its date more than a brief line does.
+
+    The brief states its recording time once in a header, and everything under
+    it shares that time. Recall has no such header: it reaches across every
+    stored brief, so a claim from six weeks ago and one from this morning arrive
+    side by side, looking identical. Without a date the older one reads as
+    current — which is the exact failure this marking exists to prevent.
+    """
+
+    def setUp(self):
+        self.dir = tempfile.mkdtemp()
+        self.briefs = os.path.join(self.dir, "briefs")
+        write_brief(
+            self.briefs,
+            "old",
+            [
+                claim(
+                    "The dashboard port is 3333 and the tunnel forwards it",
+                    "a1",
+                    "port",
+                ),
+                claim("We picked sqlite for the watcher write pattern", "a2", "sqlite"),
+            ],
+        )
+
+    def line_for(self, prompt):
+        ctx = context_of(run_hook(self.briefs, prompt))
+        lines = [l for l in ctx.splitlines() if l.startswith("- ")]
+        self.assertTrue(lines, "recall returned nothing for %r" % prompt)
+        return lines[0]
+
+    def test_a_recalled_line_says_when_it_was_recorded(self):
+        self.assertIn("2026-08-13", self.line_for("what is the dashboard port"))
+
+    def test_a_live_state_claim_is_marked_in_recall_too(self):
+        self.assertIn("VERIFY CURRENT", self.line_for("what is the dashboard port"))
+
+    def test_a_settled_decision_is_not_marked(self):
+        line = self.line_for("why did we pick sqlite for the watcher")
+        self.assertIn("2026-08-13", line)
+        self.assertNotIn("VERIFY CURRENT", line)
 
 
 if __name__ == "__main__":

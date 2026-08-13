@@ -21,13 +21,33 @@
   "still", "now", and their Russian equivalents) carry `VERIFY CURRENT`.
   Tests: `tests/test_recorded_and_verify.py`.
 
-  The detector was tuned against 1,266 stored claims rather than guessed at. A
-  first version marked 67% of them: Russian stems matched inside longer words —
-  `порт` inside *паспортов*, `уже` inside *нужен* — so every alternative is now
-  anchored at a word start. A second still marked 40%, with "сейчас" heading
-  half of all matches and almost always meaning "сейчас собираю…", a description
-  of an action rather than a value that goes stale. Dropping it brought the rate
-  to 19%; "сейчас версия 0.2.0" still marks, on `версия`.
+  Recall carries the same marks, and needs them more than the brief does: it
+  reaches back across every stored brief, so its lines have no shared header to
+  date them and a claim from six weeks ago arrives looking exactly like one from
+  this morning. Each recalled line now leads with its own recording date and,
+  where it asserts a live state, `VERIFY CURRENT`.
+
+  The detector is tuned for precision, not coverage: a warning that fires on two
+  claims in three is noise nobody acts on. It was measured against production
+  rather than guessed at, in four rounds. A first version marked 67% of 1,266
+  stored claims, because Russian stems matched inside longer words — `порт`
+  inside *паспортов*, `уже` inside *нужен* — so every alternative is now anchored
+  at a word start. A second still marked 40%, with "сейчас" heading half of all
+  matches and almost always meaning "сейчас собираю…", an action rather than a
+  value that goes stale; dropping it reached 19%, and "сейчас версия 0.2.0" still
+  marks, on `версия`.
+
+  Rate is not accuracy, so the third and fourth rounds were labelled by hand. On
+  25 marked claims, precision was 18/25 — `текущ` was firing on "текущий ролик"
+  where it means *this*, and any bare number counted as a value, so "проверен
+  12/12" marked. Value-bearing nouns now need a version, hash or port beside
+  them. Re-measured on a full day of production claims, labelled one by one: 76
+  of 325 marked (23%), 70 of them correctly — **precision 92%**. The last round
+  came from that labelling: a sentence opening with a plan or an order
+  ("Проверю, что накатилось…") asserts nothing about the present, and removing
+  those cost no true positive. Recall is the side that pays — about half the
+  unmarked claims also assert a live state — and that is the deliberate trade.
+  The false positives found at each stage are regression tests, not prose.
 
   The date is stated once in the header and repeated on a line only when that
   claim is older than the brief around it. The first version printed it on every
