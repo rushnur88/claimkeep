@@ -24,3 +24,6 @@ benchmark/longmemeval/data
 *.bak-*
 *.pre-attribution-*
 __pycache__/
+dist/
+build/
+*.egg-info/

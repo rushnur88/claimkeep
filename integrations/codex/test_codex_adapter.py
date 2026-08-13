@@ -399,3 +399,45 @@ class TestTranscriptIsPrivate(unittest.TestCase):
             self.assertEqual(_stat.S_IMODE(os.stat(path).st_mode), 0o600)
             with open(path, encoding="utf-8") as fh:
                 self.assertEqual(len(fh.read().strip().split("\n")), 2)
+
+
+class TestAgentsWriteIsAtomic(unittest.TestCase):
+    """AGENTS.md is the agent's own instructions; a half-write truncates them.
+
+    The managed block was written with a plain truncating open, the same shape
+    the package fixed for briefs. An interrupted write leaves the file short —
+    and unlike a brief, this file also holds instructions ClaimKeep did not put
+    there.
+    """
+
+    def test_a_failed_write_leaves_the_original_intact(self):
+        with tempfile.TemporaryDirectory() as d:
+            agents = os.path.join(d, "AGENTS.md")
+            original = "# Project\n\nExisting instructions.\n"
+            with open(agents, "w", encoding="utf-8") as fh:
+                fh.write(original)
+
+            def boom(_src, _dst):
+                raise RuntimeError("disk went away")
+
+            real = reader.os.replace
+            reader.os.replace = boom
+            try:
+                with self.assertRaises(RuntimeError):
+                    reader.update_agents_md(agents, "## brief\n")
+            finally:
+                reader.os.replace = real
+            with open(agents, encoding="utf-8") as fh:
+                self.assertEqual(fh.read(), original)
+            self.assertEqual(os.listdir(d), ["AGENTS.md"])
+
+    def test_a_normal_write_still_works(self):
+        with tempfile.TemporaryDirectory() as d:
+            agents = os.path.join(d, "AGENTS.md")
+            with open(agents, "w", encoding="utf-8") as fh:
+                fh.write("# Project\n")
+            reader.update_agents_md(agents, "## brief\n")
+            with open(agents, encoding="utf-8") as fh:
+                body = fh.read()
+            self.assertIn("brief", body)
+            self.assertIn("# Project", body)

@@ -179,3 +179,49 @@ class TestExistingFilesAreHardened(unittest.TestCase):
         from claimkeep import storage
 
         storage.harden_existing(os.path.join(tempfile.mkdtemp(), "absent"))
+
+
+class TestAppendTightensExistingFiles(unittest.TestCase):
+    """An append-only store predates every fix applied to it.
+
+    `append_private` set 0600 only when it created the file, so a lesson store
+    written by an earlier release kept its mode for good — on the deployment,
+    `lessons.jsonl` was still 0664 while every brief beside it had been closed.
+    The file is the same kind of memory either way.
+    """
+
+    def test_an_existing_loose_file_is_tightened_on_append(self):
+        from claimkeep import storage
+
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "lessons.jsonl")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write('{"id": "1"}\n')
+            os.chmod(path, 0o664)
+            storage.append_private(path, '{"id": "2"}\n')
+            self.assertEqual(mode_of(path), 0o600)
+            with open(path, encoding="utf-8") as fh:
+                self.assertEqual(len(fh.read().strip().split("\n")), 2)
+
+    def test_the_parent_directory_is_tightened_too(self):
+        from claimkeep import storage
+
+        with tempfile.TemporaryDirectory() as d:
+            store = os.path.join(d, "store")
+            os.makedirs(store)
+            os.chmod(store, 0o775)
+            storage.append_private(os.path.join(store, "lessons.jsonl"), "{}\n")
+            self.assertEqual(mode_of(store), 0o700)
+
+    def test_harden_existing_covers_any_pattern(self):
+        # Rotated transcripts are not *.json, and were left behind by a sweep
+        # that only looked at briefs.
+        from claimkeep import storage
+
+        with tempfile.TemporaryDirectory() as d:
+            archive = os.path.join(d, "transcript.jsonl.20260813T000000Z.harvested")
+            with open(archive, "w", encoding="utf-8") as fh:
+                fh.write("{}\n")
+            os.chmod(archive, 0o644)
+            storage.harden_existing(d)
+            self.assertEqual(mode_of(archive), 0o600)

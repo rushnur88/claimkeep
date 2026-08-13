@@ -113,7 +113,6 @@ def append_private(path: str, text: str) -> None:
     """Append `text` to `path`, owner-only, under an advisory lock if available."""
     path = os.path.abspath(os.path.expanduser(path))
     private_dir(os.path.dirname(path))
-    existed = os.path.exists(path)
     with open(path, "a", encoding="utf-8") as handle:
         if fcntl is not None:
             fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
@@ -123,8 +122,12 @@ def append_private(path: str, text: str) -> None:
         finally:
             if fcntl is not None:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-    if not existed:
-        try:
+    # Every append, not only the one that created the file: an append-only store
+    # outlives the release that tightened it, so a lesson store written by an
+    # earlier version kept its old mode for good — 0664 next to briefs that had
+    # all been closed to 0600.
+    try:
+        if stat.S_IMODE(os.stat(path).st_mode) & ~FILE_MODE:
             os.chmod(path, FILE_MODE)
-        except OSError:
-            pass
+    except OSError:
+        pass

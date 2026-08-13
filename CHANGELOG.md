@@ -1,7 +1,24 @@
 # Changelog
 
-## Unreleased
+## 0.3.0 — 2026-08-13
 
+Two days of external audit, reproduced and fixed here. The headline: the
+published 0.2.0 wheel predates all of it, so anyone who installed from PyPI has
+the defects below. Upgrade rather than pin.
+
+- **Fixed: an append only tightened permissions on the file it created.** A
+  lesson store written by an earlier release kept its mode for good — on the
+  deployment, `lessons.jsonl` was `0664` while every brief beside it had been
+  closed to `0600`. Every append now checks, and the parent directory with it.
+- **Fixed: the `AGENTS.md` write was not atomic.** It used a plain truncating
+  open, the shape the package had already fixed for briefs. That file also holds
+  instructions ClaimKeep did not write, so an interrupted write truncates
+  someone else's content: it now writes beside the target, fsyncs and renames.
+- **Fixed: an empty render could not be told from a failed one.**
+  `head_brief_markdown` returned `""` whether there was no brief yet, the
+  renderer exited non-zero, or its output would not parse. The first is ordinary
+  on a fresh install; the others are not, and silence about them is how a broken
+  install passes for a quiet one. The reason now goes to stderr.
 - **Fixed: corrections retired each other.** Every external correction was filed
   under one topic, `retraction:external`, and supersession reads one topic as one
   subject restated — so the second correction of a session silently retired the
