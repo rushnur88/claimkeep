@@ -37,6 +37,7 @@ import argparse
 import datetime as _dt
 import json
 import os
+import stat
 import subprocess
 import sys
 from typing import Any, Dict, Iterable, List, Optional, Union
@@ -68,7 +69,24 @@ def _append_units(transcript_path: str, units: List[Dict[str, Any]]) -> int:
     with open(transcript_path, "a", encoding="utf-8") as fh:
         for unit in units:
             fh.write(json.dumps(unit, ensure_ascii=False) + "\n")
+    # The rolling transcript holds the same session text the briefs do, so it
+    # gets the same treatment: owner-only, directory included, and existing
+    # files brought along rather than left behind by the release that changed it.
+    _harden(parent, transcript_path)
     return len(units)
+
+
+def _harden(directory: str, path: str) -> None:
+    """Owner-only for the transcript and its directory. Best effort by design:
+    a permissions problem must not cost the caller the turn it just recorded."""
+    for target, mode in ((directory, 0o700), (path, 0o600)):
+        if not target:
+            continue
+        try:
+            if stat.S_IMODE(os.stat(target).st_mode) & ~mode:
+                os.chmod(target, mode)
+        except OSError:
+            pass
 
 
 def _stamp() -> str:

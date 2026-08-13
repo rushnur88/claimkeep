@@ -2,6 +2,43 @@
 
 ## Unreleased
 
+- **Fixed: corrections retired each other.** Every external correction was filed
+  under one topic, `retraction:external`, and supersession reads one topic as one
+  subject restated — so the second correction of a session silently retired the
+  first. "The port is 4444, not 3333" went inactive because "the retry ceiling is
+  9, not 5" arrived after it. The topic now carries the ids and numbers the
+  correction is about, so two corrections of one value still resolve against each
+  other and two corrections of different values do not.
+  Tests: `tests/test_corrections_are_independent.py`.
+- **Fixed: brief content could close the managed block it lived in.** The
+  `AGENTS.md` writer split on the first `END` marker, so a brief quoting the
+  marker ended the block early, left the remainder of the old block in the file,
+  and added another marker on every update. The production file had reached one
+  `BEGIN` and three `END`s — one of them inside a claim describing this very
+  defect, so the plugin was corrupting the file with a sentence about the
+  corruption, and a reader taking the first `END` loaded a truncated, stale
+  brief. Markers in brief content are now defused before the block is written,
+  and the writer takes the last `END`, which repairs a file already in that
+  state.
+- **Fixed: one unreadable brief cost the session its memory.** `postcompact`
+  loaded the newest brief and, if that file was truncated, exited 0 having
+  injected nothing — with every earlier brief sitting there readable. It now
+  walks back to the newest brief that parses. The bad file is left untouched and
+  the reason goes to stderr. Tests: `tests/test_corrupt_brief_fallback.py`.
+- **Fixed: privacy applied only to newly written files.** Tightening the write
+  path left the archive as it was: on the deployment that prompted the change,
+  270 of 272 briefs stayed `0644` because they predated it. A harvest now brings
+  the whole store to `0600`, and the Codex bridge does the same for its rolling
+  transcript and directory.
+- **Changed: the benchmark runs the real pipeline.** It called `calibration` and
+  `regex_floor` by hand and scored their texts joined by newlines — two of five
+  harvesters, no supersession, and a string the plugin never emits. It now builds
+  the brief through `_build_brief` at the measured budget and scores what the
+  shipped renderer produces. The published figures move: 18.0% -> 33.9% (+15.9)
+  against +31.7 before, `fact` 7.3% -> 29.4%, and `path` from a small win to
+  72.2% against 29.9% — rendering spends characters on structure, so fewer items
+  fit the same budget. The README now leads with that trade instead of the total.
+
 - **Fixed: a noun that looks like a verb decided where the subject ended.**
   `extract_triple` split at the first verb-shaped token, which engineering prose
   breaks in both directions. "The pinned version is 1.2.3" opens with a

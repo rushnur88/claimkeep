@@ -309,3 +309,93 @@ class TestUnitsStateTheirAuthor(unittest.TestCase):
         units = adapter.parse_run(VERIFIED_LINES)["units"]
         self.assertEqual([u.get("role") for u in units], ["assistant"])
         self.assertEqual(units[0]["text"], AGENT_ANSWER)
+
+
+class TestManagedBlockIsNotInjectable(unittest.TestCase):
+    """Brief content must never be able to close the block it lives in.
+
+    The writer split on the first END, so a brief whose text happened to contain
+    the marker ended the block early: the rest of the old block survived, the
+    next update appended another, and the file grew a marker each time. On the
+    production AGENTS.md that had reached one BEGIN and three ENDs — one of them
+    inside a claim that quoted the marker while describing this very defect, so
+    the plugin was corrupting the file with a sentence about the corruption. A
+    reader taking the first END then loads a truncated, stale brief.
+    """
+
+    def read(self, path):
+        with open(path, encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_a_marker_in_the_brief_does_not_leak_into_the_file(self):
+        with tempfile.TemporaryDirectory() as d:
+            agents = os.path.join(d, "AGENTS.md")
+            with open(agents, "w", encoding="utf-8") as fh:
+                fh.write("# Project\n")
+            reader.update_agents_md(agents, "## brief\nquoting " + reader.END + " here\n")
+            body = self.read(agents)
+            self.assertEqual(body.count(reader.BEGIN), 1)
+            self.assertEqual(body.count(reader.END), 1)
+
+    def test_repeated_updates_keep_exactly_one_pair(self):
+        with tempfile.TemporaryDirectory() as d:
+            agents = os.path.join(d, "AGENTS.md")
+            with open(agents, "w", encoding="utf-8") as fh:
+                fh.write("# Project\n\nExisting instructions.\n")
+            for i in range(4):
+                reader.update_agents_md(agents, "## brief %d\nmentions %s\n" % (i, reader.END))
+            body = self.read(agents)
+            self.assertEqual(body.count(reader.BEGIN), 1)
+            self.assertEqual(body.count(reader.END), 1)
+            self.assertIn("Existing instructions.", body)
+            self.assertIn("brief 3", body)
+            self.assertNotIn("brief 2", body)
+
+    def test_an_already_corrupted_file_is_repaired(self):
+        # The production file is in this state; the next write has to fix it
+        # rather than add to it.
+        with tempfile.TemporaryDirectory() as d:
+            agents = os.path.join(d, "AGENTS.md")
+            with open(agents, "w", encoding="utf-8") as fh:
+                fh.write("# Project\n\n%s\nold brief %s\nleftover\n%s\n\nTail instructions.\n"
+                         % (reader.BEGIN, reader.END, reader.END))
+            reader.update_agents_md(agents, "## fresh brief\n")
+            body = self.read(agents)
+            self.assertEqual(body.count(reader.BEGIN), 1)
+            self.assertEqual(body.count(reader.END), 1)
+            self.assertIn("fresh brief", body)
+            self.assertNotIn("old brief", body)
+            self.assertNotIn("leftover", body)
+            self.assertIn("Tail instructions.", body)
+
+
+class TestTranscriptIsPrivate(unittest.TestCase):
+    """The rolling transcript is the same session text as the briefs."""
+
+    STREAM = "\n".join([
+        json.dumps({"type": "item.completed",
+                    "item": {"type": "agent_message", "text": "Port is 3333 [C:90%]"}}),
+        json.dumps({"type": "turn.completed", "usage": {"input_tokens": 5}}),
+    ])
+
+    def test_new_transcript_and_directory_are_owner_only(self):
+        import stat as _stat
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "codex", "transcript.jsonl")
+            writer.on_run_complete(self.STREAM, transcript_path=path,
+                                   brief_dir=os.path.join(d, "briefs"), threshold=10**9)
+            self.assertEqual(_stat.S_IMODE(os.stat(path).st_mode), 0o600)
+            self.assertEqual(_stat.S_IMODE(os.stat(os.path.dirname(path)).st_mode), 0o700)
+
+    def test_a_transcript_from_an_older_release_is_tightened(self):
+        import stat as _stat
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "transcript.jsonl")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps({"role": "assistant", "text": "old turn"}) + "\n")
+            os.chmod(path, 0o644)
+            writer.on_run_complete(self.STREAM, transcript_path=path,
+                                   brief_dir=os.path.join(d, "briefs"), threshold=10**9)
+            self.assertEqual(_stat.S_IMODE(os.stat(path).st_mode), 0o600)
+            with open(path, encoding="utf-8") as fh:
+                self.assertEqual(len(fh.read().strip().split("\n")), 2)

@@ -27,7 +27,8 @@ class RetractionTest(unittest.TestCase):
             self.config,
         )
         self.assertEqual(len(items), 1)
-        self.assertEqual(items[0].topic, "retraction")
+        self.assertTrue(items[0].topic.startswith("retraction"), items[0].topic)
+        self.assertFalse(items[0].topic.startswith("retraction:external"))
 
     def test_a_correction_from_another_speaker_is_kept_and_marked(self):
         """A sister's correction arrives as a user turn. An assistant-only pass
@@ -37,7 +38,9 @@ class RetractionTest(unittest.TestCase):
             self.config,
         )
         self.assertEqual(len(items), 1)
-        self.assertEqual(items[0].topic, "retraction:external")
+        # The topic now carries which value was corrected, so that two
+        # unrelated corrections do not retire each other.
+        self.assertTrue(items[0].topic.startswith("retraction:external"), items[0].topic)
 
     def test_english_and_russian_both_match(self):
         items = self.harvester.harvest(
@@ -64,7 +67,8 @@ class RetractionTest(unittest.TestCase):
             self.config,
         )
         self.assertEqual(len(items), 1)
-        self.assertEqual(items[0].topic, "retraction")
+        self.assertTrue(items[0].topic.startswith("retraction"), items[0].topic)
+        self.assertFalse(items[0].topic.startswith("retraction:external"))
 
     def test_ordinary_statements_are_left_alone(self):
         items = self.harvester.harvest(

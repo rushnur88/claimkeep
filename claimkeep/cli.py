@@ -24,7 +24,7 @@ from .retrieve import recall
 from .select import apply_budget
 from .stats import collect as collect_stats
 from .stats import render as render_stats
-from .storage import append_private, private_dir, write_private
+from .storage import append_private, harden_existing, private_dir, write_private
 
 
 def _now_iso() -> str:
@@ -193,6 +193,28 @@ def _newest_brief(brief_dir: str) -> Optional[str]:
     if not paths:
         return None
     return max(paths, key=os.path.getmtime)
+
+
+def _newest_readable_brief(brief_dir: str) -> Optional[Brief]:
+    """The most recent brief that actually parses, newest first.
+
+    A truncated or half-written newest file used to take the whole session's
+    memory with it: the hook caught the error, exited 0 and re-injected nothing,
+    with every earlier brief sitting there readable. The corpus loader has always
+    skipped a bad brief and moved on; this path had not.
+
+    The bad file is left exactly where it is — repairing or deleting memory on a
+    read is not this function's business — and the reason goes to stderr.
+    """
+    for path in sorted(
+        glob.glob(os.path.join(brief_dir, "*.json")), key=os.path.getmtime, reverse=True
+    ):
+        try:
+            with open(path, "r", encoding="utf-8") as handle:
+                return Brief.from_json(handle.read())
+        except (OSError, ValueError, json.JSONDecodeError) as exc:
+            _warn(f"skipping unreadable brief {os.path.basename(path)}", exc)
+    return None
 
 
 def _carry_lessons(
@@ -443,6 +465,9 @@ def _cmd_precompact(args: argparse.Namespace) -> int:
         else:
             private_dir(os.path.dirname(os.path.abspath(out)))
         write_private(out, brief.to_json())
+        # The store outlives any one release: files written before the
+        # permissions were tightened hold the same session text as this one.
+        harden_existing(os.path.dirname(os.path.abspath(out)), "*.json")
         _probe_log(brief, source, created_utc)
         print(out)
         return 0
@@ -454,12 +479,13 @@ def _cmd_precompact(args: argparse.Namespace) -> int:
 def _cmd_postcompact(args: argparse.Namespace) -> int:
     try:
         brief_path = args.brief
-        if not brief_path:
-            brief_path = _newest_brief(default_config().expanded_brief_dir())
-        if not brief_path:
-            return 0
-        with open(brief_path, "r", encoding="utf-8") as handle:
-            brief = Brief.from_json(handle.read())
+        if brief_path:
+            with open(brief_path, "r", encoding="utf-8") as handle:
+                brief = Brief.from_json(handle.read())
+        else:
+            brief = _newest_readable_brief(default_config().expanded_brief_dir())
+            if brief is None:
+                return 0
         budget = int(getattr(default_config(), "budget_chars", 0) or 0)
         payload = postcompact_payload(brief, args.event, budget)
         print(json.dumps(payload, ensure_ascii=False))

@@ -23,6 +23,7 @@ CLI:
 Env: CLAIMKEEP_HOME — path to the claimkeep checkout, prepended to PYTHONPATH for the
 `-m claimkeep` subprocess when the package is not pip-installed (unused if it is).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -55,7 +56,9 @@ def head_brief_markdown(brief_dir: str) -> str:
     """Render the newest brief in brief_dir to markdown (empty string if none / render fails)."""
     proc = subprocess.run(
         [sys.executable, "-m", "claimkeep", "postcompact", "--event", "SessionStart"],
-        capture_output=True, text=True, env=_claimkeep_env(brief_dir),
+        capture_output=True,
+        text=True,
+        env=_claimkeep_env(brief_dir),
     )
     if proc.returncode != 0 or not proc.stdout.strip():
         return ""
@@ -66,11 +69,23 @@ def head_brief_markdown(brief_dir: str) -> str:
     return payload.get("hookSpecificOutput", {}).get("additionalContext", "") or ""
 
 
+def _defuse(markdown: str) -> str:
+    """Neutralise block markers appearing inside brief content.
+
+    A brief is verbatim text from a session, and a session that discusses this
+    file will quote these markers — the production AGENTS.md carried a claim
+    describing the marker bug, which then caused it. Left intact, that string
+    closes the managed block from the inside. The comment syntax is stripped so
+    the sentence still reads while no longer being a marker.
+    """
+    return markdown.replace(BEGIN, "[claimkeep:begin]").replace(END, "[claimkeep:end]")
+
+
 def update_agents_md(agents_path: str, markdown: str) -> str:
     """Insert/replace the ClaimKeep managed block in AGENTS.md. Idempotent; never touches
     content outside the markers. No-op guard: caller should skip empty markdown."""
     agents_path = _expand(agents_path)
-    block = f"{BEGIN}\n{markdown.rstrip()}\n{END}\n"
+    block = f"{BEGIN}\n{_defuse(markdown).rstrip()}\n{END}\n"
 
     existing = ""
     if os.path.exists(agents_path):
@@ -79,7 +94,12 @@ def update_agents_md(agents_path: str, markdown: str) -> str:
 
     if BEGIN in existing and END in existing:
         pre = existing.split(BEGIN, 1)[0]
-        post = existing.split(END, 1)[1]
+        # The LAST end marker, not the first. A brief that quoted the marker used
+        # to close the block early, leaving the rest of the old block in the file
+        # and adding a marker on every update — the production AGENTS.md reached
+        # one BEGIN and three ENDs. Taking the last one repairs a file already in
+        # that state instead of building on it; `_defuse` stops it recurring.
+        post = existing.split(END)[-1]
         pre = pre.rstrip("\n")
         joiner = "\n\n" if pre.strip() else ""
         new = pre + joiner + block + post.lstrip("\n")
@@ -100,17 +120,23 @@ def main(argv: Optional[List[str]] = None) -> int:
         prog="codex_claimkeep_read",
         description="Render the HEAD ClaimKeep brief into AGENTS.md (or stdout) for Codex.",
     )
-    ap.add_argument("--brief-dir", required=True, help="directory holding harvested briefs")
+    ap.add_argument(
+        "--brief-dir", required=True, help="directory holding harvested briefs"
+    )
     group = ap.add_mutually_exclusive_group(required=True)
     group.add_argument("--agents", help="AGENTS.md path to update (managed block)")
-    group.add_argument("--stdout", action="store_true", help="print brief markdown to stdout")
+    group.add_argument(
+        "--stdout", action="store_true", help="print brief markdown to stdout"
+    )
     args = ap.parse_args(argv)
 
     md = head_brief_markdown(args.brief_dir)
     if not md.strip():
         # No brief yet — do not wipe AGENTS.md, do not print noise.
-        sys.stderr.write("codex_claimkeep_read: no brief found in %s (nothing injected)\n"
-                         % _expand(args.brief_dir))
+        sys.stderr.write(
+            "codex_claimkeep_read: no brief found in %s (nothing injected)\n"
+            % _expand(args.brief_dir)
+        )
         return 0
 
     if args.stdout:

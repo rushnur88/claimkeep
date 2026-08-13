@@ -23,7 +23,9 @@ not swallow errors, because the layers above it decide what is fatal.
 
 from __future__ import annotations
 
+import glob
 import os
+import stat
 import tempfile
 from typing import Optional
 
@@ -51,6 +53,34 @@ def private_dir(path: Optional[str]) -> None:
     except OSError:
         # A directory we do not own — the caller still gets to use it.
         pass
+
+
+def harden_existing(directory: str, pattern: str = "*") -> int:
+    """Bring files already in `directory` down to owner-only. Returns how many.
+
+    Tightening the write path only protects what is written afterwards. This
+    store is append-only and long-lived: on the deployment that prompted the
+    change, 270 of 272 briefs stayed 0644 because they predated it, holding
+    exactly the same kind of session text as the two that did not.
+
+    Only files that are more permissive than 0600 are touched, and one owned by
+    another user is skipped rather than failing the harvest around it.
+    """
+    hardened = 0
+    directory = os.path.abspath(os.path.expanduser(directory))
+    if not os.path.isdir(directory):
+        return 0
+    private_dir(directory)
+    for name in glob.glob(os.path.join(directory, pattern)):
+        try:
+            if not os.path.isfile(name):
+                continue
+            if stat.S_IMODE(os.stat(name).st_mode) & ~FILE_MODE:
+                os.chmod(name, FILE_MODE)
+                hardened += 1
+        except OSError:
+            continue
+    return hardened
 
 
 def write_private(path: str, text: str) -> None:

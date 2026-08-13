@@ -125,3 +125,57 @@ class TestStoragePrivacy(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestExistingFilesAreHardened(unittest.TestCase):
+    """Tightening permissions for new files leaves the archive wide open.
+
+    The store is append-only and long-lived: on the deployment that prompted
+    this, 270 of 272 briefs stayed 0644 after the fix, because only the two
+    written afterwards went through the new path. The old ones hold the same
+    kind of session text as the new ones.
+
+    So the store is hardened, not just the write: every brief already there is
+    brought to 0600 as well. Only files that are too permissive are touched, and
+    a file owned by someone else is skipped rather than failing the harvest.
+    """
+
+    def test_pre_existing_briefs_are_tightened(self):
+        from claimkeep import storage
+
+        with tempfile.TemporaryDirectory() as d:
+            legacy = os.path.join(d, "20260101T000000Z-old.json")
+            with open(legacy, "w", encoding="utf-8") as fh:
+                fh.write('{"schema_version": 1, "claims": [], "supplement": []}')
+            os.chmod(legacy, 0o644)
+            storage.harden_existing(d)
+            self.assertEqual(mode_of(legacy), 0o600)
+            self.assertEqual(mode_of(d), 0o700)
+
+    def test_hardening_does_not_touch_content(self):
+        from claimkeep import storage
+
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "brief.json")
+            with open(path, "w", encoding="utf-8") as fh:
+                fh.write('{"schema_version": 1}')
+            os.chmod(path, 0o644)
+            storage.harden_existing(d)
+            with open(path, encoding="utf-8") as fh:
+                self.assertEqual(json.load(fh)["schema_version"], 1)
+
+    def test_a_harvest_hardens_the_store_it_writes_into(self):
+        with tempfile.TemporaryDirectory() as d:
+            brief_dir = os.path.join(d, "briefs")
+            os.makedirs(brief_dir)
+            legacy = os.path.join(brief_dir, "20260101T000000Z-old.json")
+            with open(legacy, "w", encoding="utf-8") as fh:
+                fh.write('{"schema_version": 1, "claims": [], "supplement": []}')
+            os.chmod(legacy, 0o644)
+            run_precompact(write_transcript(d), brief_dir)
+            self.assertEqual(mode_of(legacy), 0o600)
+
+    def test_missing_directory_is_not_an_error(self):
+        from claimkeep import storage
+
+        storage.harden_existing(os.path.join(tempfile.mkdtemp(), "absent"))

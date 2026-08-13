@@ -228,23 +228,28 @@ def score_arm(probes, corpus_text, corpus_items):
     return out
 
 
-def build_arm(units, budget, cfg, get_harvester):
-    """Harvest, then fill to the control's byte budget, newest-first."""
-    claims = get_harvester("calibration")().harvest(units, cfg)
-    supps = get_harvester("regex_floor")().harvest(units, cfg)
-    ordered = list(reversed([c.text for c in claims])) + list(
-        reversed([s.text for s in supps])
+def build_arm(units, budget, api):
+    """Build the arm the way production does, and score what it actually renders.
+
+    This used to call `calibration` and `regex_floor` by hand and join their
+    texts with newlines. That measured two harvesters out of five and a string
+    the plugin never produces: `retraction`, `atomic` and `lessons` were absent,
+    supersession never ran, and the brief the agent really receives is rendered
+    markdown with headings, confidences and ids around each item.
+
+    So the arm is `_build_brief` at the configured budget, then the shipped
+    renderer. `units` carries roles, because that is what production passes and
+    it is the only way `retraction` sees a correction at all.
+    """
+    brief = api["build_brief"](
+        units, "2026-01-01T00:00:00Z", {"agent": "benchmark", "session": "arm"}
     )
-    items, used = [], 0
-    for it in ordered:
-        if used + len(it) + 1 > budget:
-            continue
-        items.append(it)
-        used += len(it) + 1
-    return items, "\n".join(items), len(claims), len(supps)
+    fitted = api["apply_budget"](brief, budget)
+    items = [c.text for c in fitted.claims] + [s.text for s in fitted.supplement]
+    return items, api["render"](fitted), len(fitted.claims), len(fitted.supplement)
 
 
-def run_file(path, cfg, get_harvester, is_agent_row):
+def run_file(path, api):
     with open(path, encoding="utf-8") as f:
         lines = f.readlines()
 
@@ -290,8 +295,7 @@ def run_file(path, cfg, get_harvester, is_agent_row):
             # Feed the harvesters exactly what production feeds them. This calls
             # the shipped filter rather than a copy of it, so the measurement
             # cannot drift away from the behaviour it is supposed to describe.
-            if is_agent_row(obj):
-                units.append(t)
+            units.append((api["role_of"](obj), t))
             if obj.get("type") == "assistant":
                 m = obj.get("message")
                 if isinstance(m, dict) and m.get("role") == "assistant":
@@ -306,9 +310,9 @@ def run_file(path, cfg, get_harvester, is_agent_row):
         mf_probes = [p for p in probes if p["family"] != "claim"]
 
         budget = len(summary)
-        stripped = [CLAIM_RE.sub("", u) for u in units]
-        m_items, m_text, m_cl, m_su = build_arm(units, budget, cfg, get_harvester)
-        f_items, f_text, f_cl, f_su = build_arm(stripped, budget, cfg, get_harvester)
+        stripped = [(role, CLAIM_RE.sub("", t)) for role, t in units]
+        m_items, m_text, m_cl, m_su = build_arm(units, budget, api)
+        f_items, f_text, f_cl, f_su = build_arm(stripped, budget, api)
         ctrl_items = [s for s in re.split(r"[\n.]+", summary) if s.strip()]
 
         out.append(
@@ -423,7 +427,7 @@ def report(res):
         )
 
     print(
-        "\nbrief composition (mean items harvested per compaction, before the budget cut):"
+        "\nbrief composition (mean items per compaction, after the budget cut):"
     )
     print(
         "  markers present: calibration %5.1f, regex_floor %6.1f"
@@ -466,9 +470,10 @@ def main():
     if args.claimkeep_home:
         sys.path.insert(0, os.path.expanduser(args.claimkeep_home))
     try:
-        from claimkeep.cli import _is_agent_row as is_agent_row
+        from claimkeep.cli import _build_brief, _role_of
         from claimkeep.config import default_config
-        from claimkeep.harvesters import get_harvester
+        from claimkeep.rehydrate import render
+        from claimkeep.select import apply_budget
     except ImportError:
         sys.exit(
             "claimkeep not importable: run `pip install .` from the repo root, "
@@ -480,13 +485,23 @@ def main():
     if not files:
         sys.exit("no .jsonl transcripts in %s" % d)
 
-    cfg = default_config()
+    # The brief is bounded per compaction against the control's own size, so the
+    # configured cap must not bound it first — otherwise every arm is measured
+    # against whichever of the two is smaller.
+    os.environ["CLAIMKEEP_BUDGET_CHARS"] = "0"
+    default_config()  # re-read with the override in place
+    api = {
+        "build_brief": _build_brief,
+        "apply_budget": apply_budget,
+        "render": render,
+        "role_of": _role_of,
+    }
     done, all_res = 0, []
     for p in files:
         if done >= args.max_files:
             break
         try:
-            r = run_file(p, cfg, get_harvester, is_agent_row)
+            r = run_file(p, api)
         except Exception as e:
             print("ERR %s %r" % (os.path.basename(p), e), file=sys.stderr)
             continue

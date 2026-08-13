@@ -9,7 +9,9 @@ Continuous memory for Claude Code. When the context window compacts, the summary
 and drops the specifics — numbers, paths, ids, and decisions that were later reversed. ClaimKeep
 runs before compaction, takes the agent's own confidence-marked statements **verbatim** instead of
 paraphrasing them, and re-injects them afterwards. It augments native compaction rather than
-replacing it, so it is never worse than the default.
+replacing it: in use you keep the summary and get the brief as well. The measurement below is the
+harder question — brief *instead of* summary, at the same size — and there it wins on some kinds of
+fact and loses on others.
 
 https://github.com/user-attachments/assets/a0a6700e-8643-48a9-bc45-15a7f6c327fa
 
@@ -27,46 +29,43 @@ reconstruct by reasoning, and the parts that turn a resumed session into a re-in
 sessions are short, you will never notice this. If you run long refactors, multi-day debugging, or
 agent pipelines that compact several times a day, you have paid for it repeatedly.
 
-**Against the real control, at equal budget: 21.4% → 39.7% of frozen probes recovered, +18.3
-points** — and on the family built to be unwinnable, 7.3% → 27.3%.
+**Against the real control, at equal budget: 18.0% → 33.9% of frozen probes recovered, +15.9
+points** — and on the family built to be unwinnable, 7.3% → 29.4%.
 
 The control is not a simulation. Claude Code writes its own compaction summary to the transcript
-(`compact_boundary`, `isCompactSummary`), so the naive arm was already on disk — 68 real compactions,
-1,481 probes frozen before any result was seen. Each arm was given exactly the number of characters
+(`compact_boundary`, `isCompactSummary`), so the naive arm was already on disk — 69 real compactions,
+1,491 probes frozen before any result was seen. Each arm was given exactly the number of characters
 the native summary spent on that same compaction, because an unbounded brief is not a comparison.
+Both arms run the shipped code: the full harvester set, supersession, the budget, and the renderer
+that produces what the agent actually receives.
 
 By probe family, at equal budget:
 
 | family | native | ClaimKeep | |
 |---|---|---|---|
-| `fact` (bare number + word) | 7.3% | **27.3%** | **adversarial** — nothing in the plugin targets these |
-| `hash` | 57.5% | 82.8% | biased toward the plugin — regex ≈ harvester |
-| `path` | 71.9% | 62.5% | biased toward the plugin, and it still lost ground |
-| `claim` (marked `[C:NN%]`) | 8.2% | 79.0% | excluded from the headline — see below |
+| `fact` (bare number + word) | 7.3% | **29.4%** | **adversarial** — nothing in the plugin targets these |
+| `claim` (marked `[C:NN%]`) | 8.2% | 35.8% | the native summary barely carries these |
+| `hash` | 57.5% | 52.7% | native summary ahead |
+| `path` | 72.2% | 29.9% | native summary well ahead |
 
-Per compaction: **43 wins, 11 draws, 14 losses** out of 68, median +12.5, worst −33.3.
+Per compaction: **54 wins, 6 draws, 9 losses** out of 69, median +16.7, worst −19.2.
 
-**Why `claim` is excluded.** Counting it, the same run gives 18.0% → 49.7%, +31.7 points. That is the
-bigger number and it is not the one quoted. The harvester scopes a marker to the statement it
-annotates, which is very nearly the string the probe extractor freezes — measured overlap between
-the two, 95%. That family scores whether two regexes agree. Worth knowing, not honest to call
-retention. `path` and `hash` carry a milder form of the same bias, which is why the adversarial
-`fact` family exists and why it is quoted first.
+**Read the losses before the total.** At equal budget this trades paths and hashes for statements and
+prose facts, and the trade is not subtle: paths drop from 72.2% to 29.9%. A rendered brief spends
+characters on structure — a heading, a confidence, a topic and an id around every item — so fewer
+items fit than the same budget of raw summary text holds. If what your compactions cost you is file
+paths, the native summary is better at keeping them than this is. If it is the reasoning, the
+decisions and the measured values, this is better by a wide margin, and those are the parts an agent
+cannot reconstruct by looking again.
 
-**`path` went down, and the cause is a fix.** While a marker's confidence was applied to a whole
-message, a claim dragged that message's paths in with it. Scoped claims are short and numerous, they
-are packed before the supplement, and at equal budget they now crowd out the `regex_floor` items
-that carry paths. Net across families it is still a clear win; on paths alone the native summary is
-ahead, and the packing order is the obvious thing to revisit.
-
-**The first version of this number was +59 points, and it was wrong three ways.** Matches were
-counted anywhere in the output rather than co-located in one item, so "12" scored inside
-"2026-08-10". The arms were not the same size — the native summary spent 15,093 characters and the
-unbounded brief 3,541,462, a factor of 235. And the path and hash probes were extracted with the
-same class of regex the harvester uses, which is how they reached 100%. Fixing all three took the
-result from +59 to +17.8. Two harvester defects found in a later audit moved it again, to the table
-above; both are in [CHANGELOG.md](CHANGELOG.md), and any figure published before that audit was
-measured on the defective behaviour.
+**Earlier versions of this number were higher, and each was measured on something the plugin does
+not do.** The first, +59 points, counted a match anywhere in the output rather than co-located in one
+item, gave the arms different sizes, and extracted path probes with the harvester's own regex; fixing
+those took it to +17.8. Later runs reached +31.7 while the harness called two of the five harvesters
+by hand and scored a newline-joined string the plugin never emits — no `retraction`, no `atomic`, no
+supersession, and none of the rendering that the budget actually pays for. Running the real pipeline
+brought it to the table above and moved `path` from a small win to a large loss. Every figure
+published before this correction is superseded; the history is in [CHANGELOG.md](CHANGELOG.md).
 
 Limits, since they decide whether the number transfers: one corpus, one agent, so generalisation is
 untested. Full method and per-compaction data: `benchmark/`, and the paper below.
@@ -76,27 +75,26 @@ untested. Full method and per-compaction data: `benchmark/`, and the paper below
 Your transcripts carry no `[C:NN%]` markers, and these do, so the difference is measured rather than
 assumed: markers stripped from the text the harvesters see, probes frozen from the original so the
 arms stay comparable, three arms in one pass. The `claim` family is excluded throughout — it is
-marker-defined by construction. 68 compactions, 1,104 probes.
+marker-defined by construction. The same 69 compactions.
 
 | arm | overall | `fact` | `hash` | `path` |
 |---|---|---|---|---|
-| native summary | 21.4% | 7.3% | 57.5% | 71.9% |
-| ClaimKeep, markers present | 39.7% | 27.3% | 82.8% | 62.5% |
-| ClaimKeep, markers stripped | **47.5%** | 31.1% | 95.7% | 93.8% |
+| native summary | 21.4% | 7.3% | 57.5% | 72.2% |
+| ClaimKeep, markers present | 33.3% | 29.4% | 52.7% | 29.9% |
+| ClaimKeep, markers stripped | **34.1%** | 30.8% | 51.6% | 28.9% |
 
-**+18.3 points with markers, +26.1 without.** A marker-free install is not the degraded case here —
-on these families it is the stronger one, 53 wins to 9 losses, median +22.5.
+**+11.9 points with markers, +12.7 without.** A marker-free install is not the degraded case: on
+these families the two arms are within a point of each other, 45 wins to 19 losses, median +12.5.
 
-The reason is the budget. Strip the markers and `calibration` produces nothing, so the entire brief
-is `regex_floor` output: paths, ids, decision lines. Those are exactly what the probes in this table
-ask for, and retention goes to 93.8% and 95.7%. Add markers back and 46 claims per compaction take
-their share of the same fixed budget, pushing floor items out — which is why `path` is *lower* with
-markers than without.
+That is worth sitting with, because it says the markers are not what carries this result. Strip them
+and `calibration` still finds nothing, but `atomic` and `regex_floor` between them keep almost as
+much — the gain here is in `fact`, prose values that the native summary drops and both arms of this
+plugin keep at roughly four times the rate. Markers buy the `claim` family in the table above (8.2%
+against 35.8%), which is the agent's own reasoning rather than the values in it.
 
-So markers do not buy path and id retention; they buy the one thing the floor cannot produce, the
-agent's own statements. Those are the `claim` family in the table above: 8.2% in the native summary
-against 79% here, on probes the floor does not target at all. Whether that trade is worth it depends
-on what your compactions actually cost you — ids and paths, or reasoning and conclusions.
+`path` is the other half of the same sentence: 72.2% in the native summary against 29.9% here, in
+both arms. Rendering costs characters, and at a fixed budget those characters come out of how many
+items fit. This is the trade the plugin makes, not a knob it is missing.
 
 One limit this design cannot escape: the native summary was written by a model that could see the
 markers. That arm cannot be re-run without them, so if markers helped the control, the marker-free

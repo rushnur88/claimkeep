@@ -108,6 +108,29 @@ def entity_signature(text: str) -> set:
     return set(_ID_RX.findall(text)) | set(_NUM_RX.findall(text))
 
 
+def _correction_topic(line: str, external: bool) -> str:
+    """A topic per corrected thing, not one topic for "corrections".
+
+    Every retraction used to share `retraction:external`, on the reasoning that
+    newest-wins within the class is right — "an older correction about the same
+    thing is itself superseded". The class is not one thing, though: supersession
+    reads one topic as one subject restated, so the second correction of a
+    session retired the first. "The port is 4444, not 3333" went inactive because
+    "the retry ceiling is 9, not 5" came after it. A correction is the most
+    valuable line in a brief; losing one to an unrelated correction is the same
+    outcome as never harvesting it.
+
+    The ids and numbers in the line are the anchor — two corrections of one value
+    share them, two corrections of different values do not.
+    """
+    base = "retraction:external" if external else "retraction"
+    signature = sorted(entity_signature(line))
+    if signature:
+        return base + ":" + "-".join(signature[:3])
+    words = [w for w in _TOKEN_RX.findall(line) if w.casefold() not in _STOP][:4]
+    return base + ":" + "-".join(w.casefold() for w in words) if words else base
+
+
 def refutes(retraction: str, claim: str) -> bool:
     """True when the retraction plausibly overturns that specific claim."""
     if entity_signature(retraction) & entity_signature(claim):
@@ -158,11 +181,7 @@ class RetractionHarvester(Harvester):
                     Claim(
                         text=line,
                         confidence=None,
-                        # One topic for all retractions: selection treats them as a
-                        # class, and newest-wins within the class is the behaviour
-                        # we want — an older correction about the same thing is
-                        # itself superseded.
-                        topic="retraction:external" if external else "retraction",
+                        topic=_correction_topic(line, external),
                         source_harvester=self.name,
                     )
                 )
