@@ -62,10 +62,29 @@ PARENT_BOOST = float(os.environ.get("CLAIMKEEP_PARENT_BOOST", "1.0"))
 # covers every script at once. Casefold handles case mapping where a script has it.
 TOKEN_RE = re.compile(r"[^\W_]+", re.UNICODE)
 
-_MONTHS = ("january", "february", "march", "april", "may", "june", "july",
-           "august", "september", "october", "november", "december")
-_WEEKDAYS = ("monday", "tuesday", "wednesday", "thursday", "friday",
-             "saturday", "sunday")
+_MONTHS = (
+    "january",
+    "february",
+    "march",
+    "april",
+    "may",
+    "june",
+    "july",
+    "august",
+    "september",
+    "october",
+    "november",
+    "december",
+)
+_WEEKDAYS = (
+    "monday",
+    "tuesday",
+    "wednesday",
+    "thursday",
+    "friday",
+    "saturday",
+    "sunday",
+)
 _ISO_DATE = re.compile(r"(\d{4})[-/](\d{2})[-/](\d{2})")
 
 
@@ -138,6 +157,12 @@ def load_corpus(config: Any) -> List[Document]:
     """Every claim, supplement item and lesson the plugin has ever stored."""
     docs: List[Document] = []
     seen = set()
+    # Claims of one topic, in the order the briefs were written. Supersession is
+    # resolved inside a brief, which leaves the corpus with a corrected value
+    # still live in the file that predates the correction: two readings of one
+    # measurement, both current, and nothing to tell them apart. Collected here
+    # and settled after every brief has been read.
+    by_topic: Dict[str, List[Document]] = {}
 
     brief_dir = config.expanded_brief_dir()
     for path in sorted(glob.glob(os.path.join(brief_dir, "*.json"))):
@@ -154,16 +179,31 @@ def load_corpus(config: Any) -> List[Document]:
                 continue
             seen.add(key)
             kind = "lesson" if claim.topic.startswith("lesson:") else "claim"
-            docs.append(Document(text=claim.text, kind=kind, id=str(claim.id),
-                                 ts=claim.ts or brief.created_utc,
-                                 superseded=not claim.is_active, source=name))
+            document = Document(
+                text=claim.text,
+                kind=kind,
+                id=str(claim.id),
+                ts=claim.ts or brief.created_utc,
+                superseded=not claim.is_active,
+                source=name,
+            )
+            docs.append(document)
+            if kind == "claim":
+                by_topic.setdefault(claim.topic, []).append(document)
         for item in brief.supplement:
             key = ("supplement", item.id)
             if key in seen:
                 continue
             seen.add(key)
-            docs.append(Document(text=item.text, kind=item.kind, id=str(item.id),
-                                 ts=brief.created_utc, source=name))
+            docs.append(
+                Document(
+                    text=item.text,
+                    kind=item.kind,
+                    id=str(item.id),
+                    ts=brief.created_utc,
+                    source=name,
+                )
+            )
 
     try:
         for lesson in LessonStore(config.expanded_lessons_path()).load():
@@ -171,10 +211,29 @@ def load_corpus(config: Any) -> List[Document]:
             if key in seen:
                 continue
             seen.add(key)
-            docs.append(Document(text=lesson.text, kind="lesson", id=str(lesson.id),
-                                 ts=lesson.ts, source="lessons"))
+            docs.append(
+                Document(
+                    text=lesson.text,
+                    kind="lesson",
+                    id=str(lesson.id),
+                    ts=lesson.ts,
+                    source="lessons",
+                )
+            )
     except OSError:
         pass
+
+    # Settle each topic across the whole corpus: the last reading written stands,
+    # every earlier one is history. Briefs are read in filename order, which is
+    # timestamp order, so "last appended" is "most recent". Nothing is dropped —
+    # a superseded claim still answers a question about what used to be true, it
+    # just stops competing with the value that replaced it.
+    for topic_docs in by_topic.values():
+        if len(topic_docs) < 2:
+            continue
+        for document in topic_docs[:-1]:
+            document.superseded = True
+
     return docs
 
 
@@ -233,7 +292,11 @@ def _parent_scores(terms: Sequence[str], docs: Sequence[Document]) -> Dict[str, 
             freq = tokens.count(term)
             if not freq:
                 continue
-            raw += idf[term] * (freq * (K1 + 1)) / (freq + K1 * (1 - B + B * length / avg_len))
+            raw += (
+                idf[term]
+                * (freq * (K1 + 1))
+                / (freq + K1 * (1 - B + B * length / avg_len))
+            )
         if raw > 0:
             out[key] = raw
     return out
@@ -259,7 +322,11 @@ def score(query: str, docs: Sequence[Document]) -> List[Dict[str, Any]]:
             freq = doc.tokens.count(term)
             if not freq:
                 continue
-            raw += idf[term] * (freq * (K1 + 1)) / (freq + K1 * (1 - B + B * length / avg_len))
+            raw += (
+                idf[term]
+                * (freq * (K1 + 1))
+                / (freq + K1 * (1 - B + B * length / avg_len))
+            )
         context = parent.get(doc.source or doc.id, 0.0)
         if raw <= 0 and context <= 0:
             continue
@@ -268,13 +335,17 @@ def score(query: str, docs: Sequence[Document]) -> List[Dict[str, Any]]:
         if doc.superseded:
             weight *= SUPERSEDED_BOOST
         weight *= 1.0 + RECENCY_BOOST * recency.get(doc.id, 0.0)
-        scored.append({"doc": doc, "score": round(raw * weight, 4), "bm25": round(raw, 4)})
+        scored.append(
+            {"doc": doc, "score": round(raw * weight, 4), "bm25": round(raw, 4)}
+        )
 
     scored.sort(key=lambda row: (-row["score"], row["doc"].id))
     return scored
 
 
-def recall(query: str, config: Any, limit: int = 10, budget_chars: int = 0) -> List[Dict[str, Any]]:
+def recall(
+    query: str, config: Any, limit: int = 10, budget_chars: int = 0
+) -> List[Dict[str, Any]]:
     """Top matches for a query, optionally capped to a character budget."""
     results = score(query, load_corpus(config))[: max(0, limit)]
     if budget_chars <= 0:

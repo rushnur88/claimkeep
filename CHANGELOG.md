@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+- **Fixed: a corrected value stayed current in two places.** Supersession by
+  topic is the mechanism `docs/BRIEF_SCHEMA.md` names for keeping a superseded
+  fact from being restated, and it was failing on the case it exists for, for
+  two separate reasons.
+
+  The topic key carried the value: "the dashboard port is 3333" and "...is 4444"
+  hashed to `dashboard port|be|3333` and `dashboard port|be|4444`, two unrelated
+  subjects, so neither superseded the other even inside a single brief. Keying
+  by the object head is right for descriptions — "my dog is friendly" and "my
+  dog is brown" are both true at once — and wrong for measurements, where a
+  subject holds one value at a time. Objects that state a value (a number, a
+  path, a hash) now key on subject and predicate alone; descriptions are
+  unchanged. Checked against 12 real transcripts: of 35 value statements, 4
+  topics merged, and each was the same fact restated, not two facts colliding.
+
+  Supersession also stopped at the file boundary. Each brief resolved its own
+  claims and knew nothing of earlier ones, so a value corrected in a later
+  session left the earlier reading live in the corpus and `recall` offered both
+  with nothing to tell them apart. The corpus now settles each topic across
+  every brief, newest wins. Nothing is deleted — a superseded claim still
+  answers what used to be true, it just stops competing with the value that
+  replaced it. Tests: `tests/test_cross_brief_supersession.py`.
+
 - **Fixed: a marker still covered its neighbour on the same line.** Scoping a
   marker to the last line left the case where two sentences share one:
   `This is explicitly unmarked. Port is 3333 [C:90%]` was stored whole, so the

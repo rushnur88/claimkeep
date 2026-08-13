@@ -46,12 +46,32 @@ from ..brief import Claim, normalize
 from ..config import Config
 from .base import Harvester
 
-
 # --- sentence splitting -----------------------------------------------------
 
 _ABBREV = {
-    "mr", "mrs", "ms", "dr", "prof", "sr", "jr", "st", "vs", "etc", "e.g", "i.e",
-    "inc", "ltd", "co", "approx", "dept", "est", "fig", "no", "vol", "am", "pm",
+    "mr",
+    "mrs",
+    "ms",
+    "dr",
+    "prof",
+    "sr",
+    "jr",
+    "st",
+    "vs",
+    "etc",
+    "e.g",
+    "i.e",
+    "inc",
+    "ltd",
+    "co",
+    "approx",
+    "dept",
+    "est",
+    "fig",
+    "no",
+    "vol",
+    "am",
+    "pm",
 }
 _SENT_END = re.compile(r"(?<=[.!?])\s+")
 
@@ -105,7 +125,9 @@ _GENERIC_OPENER = re.compile(
 )
 
 # Second-person advice anywhere in the sentence is assistant register.
-_ADVICE = re.compile(r"(?i)\b(you\s+(can|should|could|might|may|will|want\s+to|need\s+to))\b")
+_ADVICE = re.compile(
+    r"(?i)\b(you\s+(can|should|could|might|may|will|want\s+to|need\s+to))\b"
+)
 
 # Assistant politeness and framing, anywhere in the sentence rather than only at
 # the start: "Now, let's get moving!" opens on an adverb and still is not a fact.
@@ -120,19 +142,118 @@ _ASSISTANT_REGISTER = re.compile(
 # verb head is the cheapest reliable signal, and instruction prose is exactly
 # what flooded the first run: "Aim for 3-5 minutes", "Hold for 5-10 breaths".
 _IMPERATIVE_HEADS = {
-    "aim", "try", "incorporate", "hold", "stay", "find", "avoid", "end", "begin",
-    "start", "keep", "use", "take", "make", "add", "include", "consider", "focus",
-    "ensure", "remember", "choose", "pick", "set", "place", "put", "do", "don't",
-    "dont", "let", "check", "look", "see", "read", "write", "practice", "repeat",
-    "breathe", "drink", "eat", "walk", "run", "stretch", "apply", "mix", "combine",
-    "prepare", "serve", "cook", "bake", "store", "wash", "clean", "contact", "call",
-    "visit", "book", "schedule", "plan", "review", "monitor", "track", "measure",
-    "adjust", "reduce", "increase", "limit", "allow", "wear", "bring", "pack",
-    "save", "spend", "invest", "consult", "speak", "talk", "ask", "tell", "share",
-    "join", "sign", "register", "download", "install", "open", "close", "select",
-    "enable", "disable", "explore", "discover", "enjoy", "rest", "relax", "sit",
-    "stand", "lie", "lift", "push", "pull", "hydrate", "warm", "cool", "note",
-    "opt", "swap", "replace", "rotate", "alternate", "schedule", "reach", "aim",
+    "aim",
+    "try",
+    "incorporate",
+    "hold",
+    "stay",
+    "find",
+    "avoid",
+    "end",
+    "begin",
+    "start",
+    "keep",
+    "use",
+    "take",
+    "make",
+    "add",
+    "include",
+    "consider",
+    "focus",
+    "ensure",
+    "remember",
+    "choose",
+    "pick",
+    "set",
+    "place",
+    "put",
+    "do",
+    "don't",
+    "dont",
+    "let",
+    "check",
+    "look",
+    "see",
+    "read",
+    "write",
+    "practice",
+    "repeat",
+    "breathe",
+    "drink",
+    "eat",
+    "walk",
+    "run",
+    "stretch",
+    "apply",
+    "mix",
+    "combine",
+    "prepare",
+    "serve",
+    "cook",
+    "bake",
+    "store",
+    "wash",
+    "clean",
+    "contact",
+    "call",
+    "visit",
+    "book",
+    "schedule",
+    "plan",
+    "review",
+    "monitor",
+    "track",
+    "measure",
+    "adjust",
+    "reduce",
+    "increase",
+    "limit",
+    "allow",
+    "wear",
+    "bring",
+    "pack",
+    "save",
+    "spend",
+    "invest",
+    "consult",
+    "speak",
+    "talk",
+    "ask",
+    "tell",
+    "share",
+    "join",
+    "sign",
+    "register",
+    "download",
+    "install",
+    "open",
+    "close",
+    "select",
+    "enable",
+    "disable",
+    "explore",
+    "discover",
+    "enjoy",
+    "rest",
+    "relax",
+    "sit",
+    "stand",
+    "lie",
+    "lift",
+    "push",
+    "pull",
+    "hydrate",
+    "warm",
+    "cool",
+    "note",
+    "opt",
+    "swap",
+    "replace",
+    "rotate",
+    "alternate",
+    "schedule",
+    "reach",
+    "aim",
 }
 
 # Advice lists. A leading bullet, number or bold run is formatting an assistant
@@ -238,44 +359,221 @@ def factual_parts(sentence: str) -> List[str]:
 # --- triple extraction ------------------------------------------------------
 
 _AUX = {
-    "am", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "get", "got", "gets",
-    "will", "wo", "ca", "'m", "'re", "'ve", "'s", "'ll",
+    "am",
+    "is",
+    "are",
+    "was",
+    "were",
+    "be",
+    "been",
+    "being",
+    "have",
+    "has",
+    "had",
+    "do",
+    "does",
+    "did",
+    "get",
+    "got",
+    "gets",
+    "will",
+    "wo",
+    "ca",
+    "'m",
+    "'re",
+    "'ve",
+    "'s",
+    "'ll",
 }
 
 # Content verbs seen in personal narration. The list is not exhaustive by
 # design: the morphological fallback below catches the rest, and a wrong verb
 # guess costs a slightly noisier topic, not a lost sentence.
 _VERBS = {
-    "work", "works", "worked", "working", "live", "lives", "lived", "living",
-    "move", "moved", "moving", "buy", "buys", "bought", "buying", "sell", "sold",
-    "start", "started", "starting", "stop", "stopped", "finish", "finished",
-    "begin", "began", "join", "joined", "leave", "left", "quit", "adopt",
-    "adopted", "study", "studied", "studying", "teach", "taught", "learn",
-    "learned", "learnt", "read", "write", "wrote", "play", "played", "playing",
-    "run", "ran", "running", "train", "trained", "training", "travel",
-    "traveled", "travelled", "visit", "visited", "plan", "planned", "planning",
-    "book", "booked", "take", "took", "taking", "make", "made", "making",
-    "build", "built", "cook", "cooked", "eat", "ate", "drink", "drank",
-    "like", "likes", "liked", "love", "loves", "loved", "prefer", "prefers",
-    "preferred", "hate", "hated", "enjoy", "enjoyed", "want", "wanted",
-    "need", "needed", "own", "owns", "owned", "keep", "kept", "use", "used",
-    "drive", "drove", "driving", "fly", "flew", "switch", "switched",
-    "change", "changed", "decide", "decided", "choose", "chose", "pick",
-    "picked", "name", "named", "call", "called", "meet", "met", "marry",
-    "married", "graduate", "graduated", "retire", "retired", "volunteer",
-    "volunteered", "attend", "attended", "sign", "signed", "order", "ordered",
-    "pay", "paid", "save", "saved", "spend", "spent", "earn", "earned",
-    "grow", "grew", "growing", "raise", "raised", "manage", "managed",
-    "lead", "led", "found", "founded", "launch", "launched", "hire", "hired",
-    "apply", "applied", "accept", "accepted", "reject", "rejected",
+    "work",
+    "works",
+    "worked",
+    "working",
+    "live",
+    "lives",
+    "lived",
+    "living",
+    "move",
+    "moved",
+    "moving",
+    "buy",
+    "buys",
+    "bought",
+    "buying",
+    "sell",
+    "sold",
+    "start",
+    "started",
+    "starting",
+    "stop",
+    "stopped",
+    "finish",
+    "finished",
+    "begin",
+    "began",
+    "join",
+    "joined",
+    "leave",
+    "left",
+    "quit",
+    "adopt",
+    "adopted",
+    "study",
+    "studied",
+    "studying",
+    "teach",
+    "taught",
+    "learn",
+    "learned",
+    "learnt",
+    "read",
+    "write",
+    "wrote",
+    "play",
+    "played",
+    "playing",
+    "run",
+    "ran",
+    "running",
+    "train",
+    "trained",
+    "training",
+    "travel",
+    "traveled",
+    "travelled",
+    "visit",
+    "visited",
+    "plan",
+    "planned",
+    "planning",
+    "book",
+    "booked",
+    "take",
+    "took",
+    "taking",
+    "make",
+    "made",
+    "making",
+    "build",
+    "built",
+    "cook",
+    "cooked",
+    "eat",
+    "ate",
+    "drink",
+    "drank",
+    "like",
+    "likes",
+    "liked",
+    "love",
+    "loves",
+    "loved",
+    "prefer",
+    "prefers",
+    "preferred",
+    "hate",
+    "hated",
+    "enjoy",
+    "enjoyed",
+    "want",
+    "wanted",
+    "need",
+    "needed",
+    "own",
+    "owns",
+    "owned",
+    "keep",
+    "kept",
+    "use",
+    "used",
+    "drive",
+    "drove",
+    "driving",
+    "fly",
+    "flew",
+    "switch",
+    "switched",
+    "change",
+    "changed",
+    "decide",
+    "decided",
+    "choose",
+    "chose",
+    "pick",
+    "picked",
+    "name",
+    "named",
+    "call",
+    "called",
+    "meet",
+    "met",
+    "marry",
+    "married",
+    "graduate",
+    "graduated",
+    "retire",
+    "retired",
+    "volunteer",
+    "volunteered",
+    "attend",
+    "attended",
+    "sign",
+    "signed",
+    "order",
+    "ordered",
+    "pay",
+    "paid",
+    "save",
+    "saved",
+    "spend",
+    "spent",
+    "earn",
+    "earned",
+    "grow",
+    "grew",
+    "growing",
+    "raise",
+    "raised",
+    "manage",
+    "managed",
+    "lead",
+    "led",
+    "found",
+    "founded",
+    "launch",
+    "launched",
+    "hire",
+    "hired",
+    "apply",
+    "applied",
+    "accept",
+    "accepted",
+    "reject",
+    "rejected",
 }
 
 # Only `-ed` and `-ing` survive as a morphological verb signal. Allowing `-s`
 # made every plural noun look finite ("radiation sources: photons, electrons"),
 # which is how a lecture outline ended up stored as a personal fact.
 _VERB_SUFFIX = re.compile(r"(?i)^[a-z]+(ed|ing)$")
-_STOP_HEAD = {"the", "a", "an", "and", "but", "so", "then", "also", "just", "well", "actually"}
+_STOP_HEAD = {
+    "the",
+    "a",
+    "an",
+    "and",
+    "but",
+    "so",
+    "then",
+    "also",
+    "just",
+    "well",
+    "actually",
+}
 
 
 def _looks_verbal(token: str) -> bool:
@@ -300,13 +598,32 @@ def _looks_verbal(token: str) -> bool:
 def _verb_root(token: str) -> str:
     """Crude stem so `worked`, `working` and `works` share one topic."""
     low = token.casefold().strip("'")
-    if low in {"am", "is", "are", "was", "were", "be", "been", "being", "'m", "'re", "'s"}:
+    if low in {
+        "am",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "'m",
+        "'re",
+        "'s",
+    }:
         return "be"
     if low in {"have", "has", "had", "'ve"}:
         return "have"
     if low in {"do", "does", "did"}:
         return "do"
-    for suffix, cut in (("ying", 4), ("ing", 3), ("ied", 3), ("ed", 2), ("es", 2), ("s", 1)):
+    for suffix, cut in (
+        ("ying", 4),
+        ("ing", 3),
+        ("ied", 3),
+        ("ed", 2),
+        ("es", 2),
+        ("s", 1),
+    ):
         if low.endswith(suffix) and len(low) - cut >= 3:
             stem = low[: len(low) - cut]
             if suffix == "ying":
@@ -356,15 +673,63 @@ def extract_triple(sentence: str) -> Optional[Tuple[str, str, str]]:
 # astronomy" are two facts, not a correction, and treating them as one hid a
 # quarter of the harvested claims behind a superseded flag on the first run.
 _FUNCTIONAL = {
-    "work", "live", "move", "own", "drive", "weigh", "marry", "name", "attend",
-    "study", "retire", "graduate", "rent", "commute", "major",
+    "work",
+    "live",
+    "move",
+    "own",
+    "drive",
+    "weigh",
+    "marry",
+    "name",
+    "attend",
+    "study",
+    "retire",
+    "graduate",
+    "rent",
+    "commute",
+    "major",
 }
 
 _OBJECT_STOP = {
-    "a", "an", "the", "to", "of", "in", "on", "at", "for", "with", "about",
-    "my", "your", "our", "their", "his", "her", "its", "some", "any", "more",
-    "very", "really", "quite", "just", "also", "been", "being", "and", "but",
-    "that", "this", "these", "those", "it", "them", "into", "from", "by",
+    "a",
+    "an",
+    "the",
+    "to",
+    "of",
+    "in",
+    "on",
+    "at",
+    "for",
+    "with",
+    "about",
+    "my",
+    "your",
+    "our",
+    "their",
+    "his",
+    "her",
+    "its",
+    "some",
+    "any",
+    "more",
+    "very",
+    "really",
+    "quite",
+    "just",
+    "also",
+    "been",
+    "being",
+    "and",
+    "but",
+    "that",
+    "this",
+    "these",
+    "those",
+    "it",
+    "them",
+    "into",
+    "from",
+    "by",
 }
 
 
@@ -377,17 +742,48 @@ def _object_head(obj: str) -> str:
     return ""
 
 
+_VALUE_RX = re.compile(r"\d")
+_PATHLIKE_RX = re.compile(r"[/\\]|^[0-9a-f]{7,40}$")
+
+
+def _states_a_value(obj: str) -> bool:
+    """True when the object is a measurement rather than a description.
+
+    A subject holds one port, one version, one path at a time, so a later
+    reading corrects the earlier one. It holds any number of descriptions at
+    once — "my dog is friendly" and "my dog is brown" are both true — which is
+    why the object head is in the key to begin with.
+
+    Keying measurements by value defeated supersession on precisely the case it
+    exists for: "the dashboard port is 3333" and "...is 4444" became
+    `dashboard port|be|3333` and `dashboard port|be|4444`, two unrelated
+    subjects, and both stayed live in the brief and in recall.
+    """
+    for token in _tokens(obj):
+        low = token.casefold()
+        if low in _OBJECT_STOP:
+            continue
+        if _VALUE_RX.search(low) or _PATHLIKE_RX.search(low):
+            return True
+        return False  # first content word decides
+    return False
+
+
 def _topic(subject: str, predicate: str, obj: str = "") -> str:
     """`my dog|be` — stable across restatements, so supersession can chain.
 
     For non-functional relations the object head joins the key, which keeps two
-    unrelated statements from colliding into a false correction.
+    unrelated statements from colliding into a false correction — unless the
+    object states a value, where a restatement is a correction and the key must
+    stay the same across it.
     """
     subject_tokens = [w for w in _tokens(subject) if w.casefold() not in _STOP_HEAD]
     subject_key = " ".join(subject_tokens[-3:]).casefold() or "speaker"
-    verb_tokens = [w for w in _tokens(predicate) if w.casefold() not in _AUX] or _tokens(predicate)
+    verb_tokens = [
+        w for w in _tokens(predicate) if w.casefold() not in _AUX
+    ] or _tokens(predicate)
     root = _verb_root(verb_tokens[-1]) if verb_tokens else "be"
-    if root in _FUNCTIONAL:
+    if root in _FUNCTIONAL or _states_a_value(obj):
         return subject_key + "|" + root
     head = _object_head(obj)
     return subject_key + "|" + root + ("|" + head if head else "")
@@ -413,9 +809,15 @@ ANCHOR_MAX_CHARS = 220
 # but R@10 0.958 -> 0.956 and preference 0.800 -> 0.767, for 1.1 points more
 # volume. It sharpens the top of the ranking and blunts the tail, which is the
 # wrong trade for a memory whose job is not to miss. Off by default.
-ANCHOR_NAMES = os.environ.get("CLAIMKEEP_ANCHOR_NAMES", "0") not in ("0", "false", "off")
+ANCHOR_NAMES = os.environ.get("CLAIMKEEP_ANCHOR_NAMES", "0") not in (
+    "0",
+    "false",
+    "off",
+)
 ANCHOR_NAME_LIMIT = 8
-_NAME_RE = re.compile(r"\b(?:[A-Z][A-Za-z]+(?:-[A-Z0-9][A-Za-z0-9]*)?|[A-Z]{2,}[0-9]*[A-Za-z0-9-]*)\b")
+_NAME_RE = re.compile(
+    r"\b(?:[A-Z][A-Za-z]+(?:-[A-Z0-9][A-Za-z0-9]*)?|[A-Z]{2,}[0-9]*[A-Za-z0-9-]*)\b"
+)
 
 
 class AtomicFactHarvester(Harvester):
