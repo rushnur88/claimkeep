@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+- **Added: recall from older sessions on every turn.** `recall` indexed every
+  brief and lesson the plugin ever wrote — 4,165 documents on one deployment —
+  and nothing called it: it was a command a human could type, while the agent is
+  who needs it. The automatic path injected exactly one brief, the newest, so
+  anything established two sessions ago was on disk and out of reach. A
+  `UserPromptSubmit` hook now searches the store for what was just asked and
+  adds up to three short lines.
+
+  Getting the filter right took three passes against a production corpus, and
+  each pass found a real problem. A BM25 score floor is useless: the same
+  question scored 1.8 against two stored claims and 18.7 against 4,165, so any
+  fixed threshold is silent on a fresh install or noisy on a mature one.
+  Matching whole words missed every question asked in an oblique case — Russian
+  inflects, so "дашборда" never matched "дашборд". And a budget that skipped
+  oversized items instead of trimming them produced nothing at all, because
+  stored claims are often whole paragraphs. The hook now keys on word prefixes,
+  requires the match to contain what the question is about, dedupes, skips
+  superseded claims, and truncates. Off with `CLAIMKEEP_RECALL_HOOK=0`.
+  Tests: `tests/test_recall_hook.py`.
+- **Added: Trusted Publishing workflow.** Releasing 0.3.0 required a long-lived
+  PyPI token, which is how tokens leak. `publish.yml` releases on a `v*` tag via
+  OIDC — no stored secret — and refuses to publish if the tag disagrees with the
+  version in the tree or the built wheel differs from it, which is the check
+  that would have caught 0.2.0 shipping pre-audit code.
+
 ## 0.3.0 — 2026-08-13
 
 Two days of external audit, reproduced and fixed here. The headline: the

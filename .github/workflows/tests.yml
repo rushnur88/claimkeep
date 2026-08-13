@@ -36,6 +36,11 @@ jobs:
           test -n "$(ls -A /tmp/ck-ci)" || { echo "precompact wrote no brief"; exit 1; }
           CLAIMKEEP_BRIEF_DIR=/tmp/ck-ci CLAUDE_HOOK_EVENT_NAME=PostCompact \
             ./scripts/postcompact.sh <<< '{}' | grep -q additionalContext
+          # The recall hook must stay silent on a prompt nothing matches, and
+          # must always exit 0 — it runs on every user turn.
+          CLAIMKEEP_BRIEF_DIR=/tmp/ck-ci ./scripts/userprompt.sh \
+            <<< '{"prompt":"hello there"}' | grep -q . && \
+            { echo "recall hook spoke when it had nothing"; exit 1; } || true
 
       - name: Codex bridge
         # Its end-to-end test skips itself when it cannot locate the package, so

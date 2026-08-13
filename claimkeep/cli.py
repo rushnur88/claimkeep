@@ -380,6 +380,150 @@ def _cmd_stats(args: argparse.Namespace) -> int:
     return 0
 
 
+#: How much of the question a match has to actually contain.
+#:
+#: The obvious filter is a score floor, and it does not work: BM25 scales with
+#: the corpus. The same question scored 1.8 against two stored claims and 18.7
+#: against 4,165 of them, so any fixed floor is either silent on a fresh install
+#: or noisy on a mature one. Overlap of the question's own content words does
+#: not move with corpus size: a match either contains what was asked about or it
+#: does not.
+RECALL_MIN_OVERLAP = float(os.environ.get("CLAIMKEEP_RECALL_MIN_OVERLAP", "0.5"))
+RECALL_LIMIT = int(os.environ.get("CLAIMKEEP_RECALL_LIMIT", "3"))
+RECALL_BUDGET = int(os.environ.get("CLAIMKEEP_RECALL_BUDGET", "600"))
+#: Per-item cut. Stored claims are often whole paragraphs.
+RECALL_ITEM_CHARS = int(os.environ.get("CLAIMKEEP_RECALL_ITEM_CHARS", "200"))
+
+#: Words that carry no subject. Both languages, because the harvesters are
+#: bilingual and a Russian greeting must be as unremarkable as an English one.
+_RECALL_STOP = frozenset(
+    """
+the and for not but with what which where when who whom whose why how
+that this these those there here
+is are was were be been being do does did done have has had can could should
+would will shall may might must about with from into over under again please
+tell show give need want know think make made take use used using now then
+just only also very much many more most some any all our your their its
+привет спасибо пожалуйста ладно хорошо давай поехали дальше сейчас теперь
+что где когда кто как почему зачем это этот эта эти тот та те там тут
+какой какая какое какие какого каком который которая которые чего чему
+быть есть был была были можно нужно надо хочу хочешь знаю знаешь думаю
+сделай сделать делать покажи показать дай дать взять использовать очень
+""".split()
+)
+
+
+def _content_terms(text: str) -> set:
+    """The words naming what a question is about, cut to a prefix.
+
+    A prefix rather than the whole word because the harvesters are bilingual and
+    Russian inflects: "дашборда" and "дашборд" are one subject, and exact token
+    matching missed every question asked in an oblique case — on a production
+    corpus it answered "what is the codex threshold" and stayed silent on "какой
+    порт у дашборда". Crude, and the right amount of crude: the cap on output
+    means a loose match costs one line, while exact matching cost the feature.
+    """
+    from .retrieve import TOKEN_RE
+
+    return {
+        t[:6]
+        for t in TOKEN_RE.findall(text.casefold())
+        if len(t) >= 4 and t not in _RECALL_STOP
+    }
+
+
+def _cmd_recall_hook(args: argparse.Namespace) -> int:
+    """Answer a user turn with the few best things older sessions established.
+
+    The automatic path injects one brief — the newest. Everything before it sits
+    in the corpus, searchable, and nothing was searching it: `recall` existed as
+    a command a human could type, which is not who needs it.
+
+    Deliberately timid. A memory layer that interrupts every message with three
+    guesses is worse than one that says nothing, so this stays quiet unless the
+    match is strong, never exceeds a few short lines, and skips superseded
+    claims — the corpus keeps history, but a live turn should not be answered
+    with a value that has since been corrected.
+    """
+    if os.environ.get("CLAIMKEEP_RECALL_HOOK", "1").strip().lower() in (
+        "0",
+        "false",
+        "off",
+    ):
+        return 0
+    try:
+        hook = _read_hook_stdin()
+        prompt = str(hook.get("prompt") or "").strip()
+        if len(prompt) < 3:
+            return 0
+        asked = _content_terms(prompt)
+        if not asked:
+            return 0  # a greeting names nothing to look up
+        config = default_config()
+        rows, seen = [], set()
+        for row in recall(prompt, config, limit=RECALL_LIMIT * 8):
+            if row["doc"].superseded:
+                continue
+            text = " ".join(row["doc"].text.split())
+            key = text.casefold()[:120]
+            if key in seen:  # the same fact is often stored in several briefs
+                continue
+            hit = asked & _content_terms(text)
+            # A short question has to match completely; a longer one has to match
+            # substantially and in more than one word. Demanding two words of a
+            # two-word question is the same as demanding all of it, and demanding
+            # only a share lets a single common word through — that is how
+            # "спасибо, всё отлично" pulled three unrelated claims out of a
+            # production corpus.
+            if len(asked) <= 2:
+                if hit != asked:
+                    continue
+            elif len(hit) < 2 or len(hit) / len(asked) < RECALL_MIN_OVERLAP:
+                continue
+            seen.add(key)
+            rows.append(row)
+            if len(rows) >= RECALL_LIMIT:
+                break
+        if not rows:
+            return 0
+
+        lines, used = [], 0
+        for row in rows:
+            text = " ".join(row["doc"].text.split())
+            # Truncate rather than skip. A stored claim is often a whole
+            # paragraph — on a production corpus the best matches ran past the
+            # budget on the first item, so a budget that skipped instead of
+            # trimming meant the hook silently produced nothing at all.
+            if len(text) > RECALL_ITEM_CHARS:
+                text = text[:RECALL_ITEM_CHARS].rstrip() + "…"
+            if used + len(text) > RECALL_BUDGET:
+                break
+            lines.append("- " + text)
+            used += len(text)
+        if not lines:
+            return 0
+
+        context = (
+            "## From an earlier session (ClaimKeep recall)\n"
+            "Retrieved by keyword against this turn; may not be relevant, and is "
+            "not a substitute for checking.\n" + "\n".join(lines)
+        )
+        print(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "UserPromptSubmit",
+                        "additionalContext": context,
+                    }
+                },
+                ensure_ascii=False,
+            )
+        )
+    except Exception as exc:  # a memory layer must never block a turn
+        _warn("recall hook produced nothing", exc)
+    return 0
+
+
 def _cmd_recall(args: argparse.Namespace) -> int:
     """Search every stored brief and lesson, not just the most recent one."""
     config = default_config()
@@ -519,6 +663,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     recall_cmd.add_argument("--json", action="store_true")
     recall_cmd.set_defaults(func=_cmd_recall)
+
+    # UserPromptSubmit: search every stored brief for what was just asked.
+    recall_hook = sub.add_parser(
+        "recall-hook", help="UserPromptSubmit hook: recall older sessions for this turn"
+    )
+    recall_hook.set_defaults(func=_cmd_recall_hook)
 
     lessons = sub.add_parser("lessons", help="list or add durable lessons")
     lessons.add_argument("--limit", type=int, default=20)

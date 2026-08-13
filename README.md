@@ -3,7 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![tests](https://github.com/rushnur88/claimkeep/actions/workflows/tests.yml/badge.svg)](https://github.com/rushnur88/claimkeep/actions/workflows/tests.yml)
 [![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen.svg)](pyproject.toml)
-[![Paper](https://img.shields.io/badge/paper-Zenodo-1682D4.svg)](https://zenodo.org/records/20819013)
+[![Paper](https://img.shields.io/badge/paper-Zenodo-1682D4.svg)](https://doi.org/10.5281/zenodo.21921441)
 
 Continuous memory for Claude Code. When the context window compacts, the summary keeps the gist
 and drops the specifics — numbers, paths, ids, and decisions that were later reversed. ClaimKeep
@@ -117,7 +117,7 @@ nothing about what the native summary would have kept — only the measurement a
 
 Method and defensible lift numbers are in the paper, *"Continuous Memory for Multi-Agent
 Infrastructure: A Calibration-Density Law for Surviving Context Compaction"* (Ravshan Nuraliev,
-2026) — <https://zenodo.org/records/20819013>. Please cite the Zenodo record if you use ClaimKeep.
+2026, v0.11) — <https://doi.org/10.5281/zenodo.21921441>. Please cite the Zenodo record if you use ClaimKeep.
 
 ## How this differs from what you already have
 
@@ -138,6 +138,33 @@ Three properties follow from that scope, and they are the reasons to prefer it o
 - **It refuses to fake a zero.** If retractions cannot be measured, `stats` reports *not measurable*
   rather than `0`. A metric that cannot distinguish "clean" from "not instrumented" is the exact bug
   this package is built to avoid.
+
+## Recall from older sessions
+
+The hooks above carry the newest brief across a compaction. Everything before it
+stays on disk, indexed, and until now nothing read it: `claimkeep recall` was a
+command a human could type, and the agent is who needs it.
+
+A `UserPromptSubmit` hook closes that. On each turn it searches every stored
+brief and lesson for what was just asked, and adds at most three short lines.
+
+It is deliberately quiet, because a memory layer that interrupts every message
+with guesses is worse than one that says nothing. A match has to contain the
+words the question is about — measured on a 4,165-document store, that keeps
+"render preset passport" answered and leaves "thanks, all good" alone. Matching
+is on word prefixes so an inflected language still works, superseded claims
+never surface, and each line is cut to 200 characters.
+
+The cost of the trade is silence on questions whose wording missed: it prefers a
+false negative to a false positive. Tuning, if you want it:
+
+| variable | default | |
+|---|---|---|
+| `CLAIMKEEP_RECALL_HOOK` | `1` | `0` turns the hook off entirely |
+| `CLAIMKEEP_RECALL_MIN_OVERLAP` | `0.5` | share of the question a match must contain |
+| `CLAIMKEEP_RECALL_LIMIT` | `3` | maximum lines added |
+| `CLAIMKEEP_RECALL_BUDGET` | `600` | characters for the whole block |
+| `CLAIMKEEP_RECALL_ITEM_CHARS` | `200` | characters per line |
 
 ## Install
 

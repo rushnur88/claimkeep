@@ -1,0 +1,78 @@
+name: publish
+
+# Publishing 0.3.0 needed a long-lived API token pasted into a chat, which is
+# how tokens leak. Trusted Publishing removes the secret entirely: PyPI verifies
+# a short-lived OIDC identity proving this workflow, in this repository, built
+# the artifacts. Nothing to store, nothing to rotate, nothing to leak.
+#
+# One-time setup on PyPI (Project -> Publishing -> Add a new pending publisher):
+#   Owner: rushnur88   Repository: claimkeep
+#   Workflow: publish.yml   Environment: pypi
+#
+# Then a release is `git tag vX.Y.Z && git push origin vX.Y.Z`.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Refuse to publish a tag that disagrees with the package
+        # A tag saying v0.3.1 on a tree that still says 0.3.0 is how a wheel ends
+        # up on PyPI under a version it does not contain — the exact failure that
+        # left 0.2.0 shipping pre-audit code for two days.
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(python -c "import re,pathlib; print(re.search(r'__version__ = \"([^\"]+)\"', pathlib.Path('claimkeep/__init__.py').read_text()).group(1))")
+          proj=$(python -c "import re,pathlib; print(re.search(r'^version = \"([^\"]+)\"', pathlib.Path('pyproject.toml').read_text(), re.M).group(1))")
+          echo "tag=$tag  __init__=$pkg  pyproject=$proj"
+          test "$tag" = "$pkg" && test "$tag" = "$proj"
+
+      - name: Tests must pass before anything is built
+        run: python -m unittest discover -s tests
+
+      - name: Build
+        run: |
+          python -m pip install --quiet build
+          python -m build
+
+      - name: The built wheel must match the tree it was built from
+        # Cheap, and it is the check that would have caught the 0.2.0 drift.
+        run: |
+          set -euo pipefail
+          python -m pip install --quiet dist/*.whl --target /tmp/installed
+          for f in $(cd claimkeep && find . -name "*.py"); do
+            cmp "claimkeep/$f" "/tmp/installed/claimkeep/$f"
+          done
+          echo "wheel is byte-identical to the working tree"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write # the OIDC token PyPI verifies; no API token anywhere
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@release/v1
