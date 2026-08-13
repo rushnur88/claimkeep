@@ -1,7 +1,7 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
   "name": "claimkeep",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Continuous memory that survives context compaction — harvests your agent's own confidence-marked claims into a verbatim brief and re-injects it after compaction.",
   "author": {"name": "Ravshan Nuraliev"},
   "homepage": "https://github.com/rushnur88/claimkeep",

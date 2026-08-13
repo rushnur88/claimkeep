@@ -1,6 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.3.1 — 2026-08-13
+
+First release published by GitHub Actions through OIDC rather than an API token.
 
 - **Added: recall from older sessions on every turn.** `recall` indexed every
   brief and lesson the plugin ever wrote — 4,165 documents on one deployment —
