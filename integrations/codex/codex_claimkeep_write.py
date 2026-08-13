@@ -30,6 +30,7 @@ Env:
                                    PYTHONPATH for the `-m claimkeep` subprocess when the
                                    package is not pip-installed (unused if it is).
 """
+
 from __future__ import annotations
 
 import argparse
@@ -74,18 +75,78 @@ def _stamp() -> str:
     return _dt.datetime.now(_dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def _inspect_brief(path: str) -> Optional[str]:
+    """Return why `path` is not a usable brief, or None if it is one.
+
+    The schema is checked against the documented contract (docs/BRIEF_SCHEMA.md)
+    rather than by importing `Brief`: this bridge deliberately talks to the
+    package through a subprocess so it never depends on importing it, and that
+    property is worth more than reusing the dataclass here.
+    """
+    try:
+        if os.path.getsize(path) == 0:
+            return "brief file is empty"
+        with open(path, encoding="utf-8") as fh:
+            data = json.load(fh)
+    except FileNotFoundError:
+        return "precompact wrote no brief"
+    except (OSError, json.JSONDecodeError) as exc:
+        return f"brief is unreadable: {type(exc).__name__}: {exc}"
+    if not isinstance(data, dict):
+        return "brief is not a JSON object"
+    missing = [k for k in ("schema_version", "claims", "supplement") if k not in data]
+    if missing:
+        return "brief is missing required keys: " + ", ".join(missing)
+    return None
+
+
 def _harvest(transcript_path: str, brief_dir: str) -> Dict[str, Any]:
+    """Run a harvest and confirm it actually produced a brief.
+
+    `claimkeep precompact` is fail-open on purpose: a memory layer must never
+    block compaction, so it exits 0 even when it wrote nothing, and explains
+    itself on stderr. Reading that exit code as success meant reporting a
+    brief_path for a file that did not exist — and, because rotation is gated on
+    the same flag, archiving the live transcript on the strength of it. Exit
+    code is necessary and nowhere near sufficient.
+    """
     transcript_path = _expand(transcript_path)
     brief_dir = _expand(brief_dir)
     os.makedirs(brief_dir, exist_ok=True)
     out = os.path.join(brief_dir, f"{_stamp()}-codex.json")
+    # Same-second reruns would otherwise let a previous brief vouch for this one.
+    pre_existing = os.path.exists(out)
+    started_at = _dt.datetime.now(_dt.timezone.utc).timestamp()
     proc = subprocess.run(
-        [sys.executable, "-m", "claimkeep", "precompact",
-         "--transcript", transcript_path, "--out", out],
-        capture_output=True, text=True, env=_claimkeep_env(),
+        [
+            sys.executable,
+            "-m",
+            "claimkeep",
+            "precompact",
+            "--transcript",
+            transcript_path,
+            "--out",
+            out,
+        ],
+        capture_output=True,
+        text=True,
+        env=_claimkeep_env(),
     )
-    return {"ok": proc.returncode == 0, "brief_path": out if proc.returncode == 0 else None,
-            "returncode": proc.returncode, "stderr": proc.stderr.strip()}
+    stderr = proc.stderr.strip()
+    if proc.returncode != 0:
+        problem = stderr or f"precompact exited {proc.returncode}"
+    elif pre_existing and os.path.getmtime(out) < started_at:
+        problem = "brief predates this run"
+    else:
+        problem = _inspect_brief(out)
+        if problem and stderr:
+            problem = f"{problem} ({stderr})"
+    return {
+        "ok": problem is None,
+        "brief_path": out if problem is None else None,
+        "returncode": proc.returncode,
+        "stderr": problem or stderr,
+    }
 
 
 def _rotate(transcript_path: str) -> Optional[str]:
@@ -107,7 +168,17 @@ def on_run_complete(
     rotate: bool = True,
 ) -> Dict[str, Any]:
     lines = codex_stdout.splitlines() if isinstance(codex_stdout, str) else codex_stdout
+    lines = list(lines)
     res = parse_run(lines)
+    # Output that carries text but decodes to no events is a broken pipe or a
+    # schema that moved — not a quiet turn. Saying so is the difference between
+    # "nothing was said" and "I could not read what was said".
+    parse_error = None
+    if res["events"] == 0 and any(line.strip() for line in lines):
+        parse_error = (
+            "codex stdout carried %d non-empty lines but no decodable events; "
+            "was the run started with --json?" % sum(1 for x in lines if x.strip())
+        )
     appended = _append_units(transcript_path, res["units"])
 
     input_tokens = res["usage"].get("input_tokens")
@@ -134,6 +205,7 @@ def on_run_complete(
         "brief_path": brief_path,
         "archived_transcript": archived,
         "harvest_error": harvest_err,
+        "parse_error": parse_error,
         "thread_id": res["thread_id"],
     }
 
@@ -143,12 +215,24 @@ def main(argv: Optional[List[str]] = None) -> int:
         prog="codex_claimkeep_write",
         description="Append a completed codex run to the rolling transcript; harvest a brief at threshold.",
     )
-    ap.add_argument("--transcript", required=True, help="rolling ClaimKeep transcript JSONL path")
-    ap.add_argument("--brief-dir", required=True, help="directory to write harvested briefs into")
-    ap.add_argument("--codex-json", default="-", help="codex --json stdout file, or - for stdin")
+    ap.add_argument(
+        "--transcript", required=True, help="rolling ClaimKeep transcript JSONL path"
+    )
+    ap.add_argument(
+        "--brief-dir", required=True, help="directory to write harvested briefs into"
+    )
+    ap.add_argument(
+        "--codex-json", default="-", help="codex --json stdout file, or - for stdin"
+    )
     ap.add_argument("--threshold", type=int, default=DEFAULT_THRESHOLD)
-    ap.add_argument("--force-harvest", action="store_true", help="harvest regardless of token count")
-    ap.add_argument("--no-rotate", action="store_true", help="do not rotate transcript after harvest")
+    ap.add_argument(
+        "--force-harvest", action="store_true", help="harvest regardless of token count"
+    )
+    ap.add_argument(
+        "--no-rotate",
+        action="store_true",
+        help="do not rotate transcript after harvest",
+    )
     args = ap.parse_args(argv)
 
     if args.codex_json == "-":

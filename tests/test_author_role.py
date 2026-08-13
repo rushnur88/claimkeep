@@ -40,9 +40,16 @@ class TestAuthorRole(unittest.TestCase):
             os.unlink(path)
 
     def read(self, rows):
+        """Rows as the harvesters that build claims will see them.
+
+        `_read_transcript` no longer filters — it attaches the author, and each
+        harvester is handed the slice it is entitled to. `calibration` stands in
+        for every claim-producing harvester here; `retraction` deliberately sees
+        more, and has its own tests in test_external_corrections.py.
+        """
         path = transcript(rows)
         self.paths.append(path)
-        return cli._read_transcript(path)
+        return cli._units_for("calibration", cli._read_transcript(path))
 
     def test_user_text_is_not_harvested(self):
         units = self.read(
@@ -59,6 +66,7 @@ class TestAuthorRole(unittest.TestCase):
         )
         self.assertEqual(len(units), 1)
         self.assertIn("3333", units[0])
+        self.assertNotIn("Friday", "".join(units))
 
     def test_injected_system_block_is_not_harvested(self):
         # Claude Code delivers hook output and reminders as user-role rows.

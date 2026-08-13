@@ -18,6 +18,7 @@ import os
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
+from .storage import append_private
 from .brief import make_id, normalize
 
 
@@ -82,12 +83,10 @@ class LessonStore:
             fresh.append(lesson)
         if not fresh:
             return []
-        parent = os.path.dirname(self.path)
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        with open(self.path, "a", encoding="utf-8") as handle:
-            for lesson in fresh:
-                handle.write(json.dumps(lesson.to_dict(), ensure_ascii=False) + "\n")
+        append_private(
+            self.path,
+            "".join(json.dumps(l.to_dict(), ensure_ascii=False) + "\n" for l in fresh),
+        )
         return fresh
 
     def recent(self, limit: int) -> List[Lesson]:

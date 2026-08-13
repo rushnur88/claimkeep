@@ -60,7 +60,7 @@ class AdapterTests(unittest.TestCase):
 
     def test_parse_run_shape(self):
         res = adapter.parse_run(VERIFIED_LINES)
-        self.assertEqual(res["units"], [{"text": AGENT_ANSWER}])
+        self.assertEqual(res["units"], [{"role": "assistant", "text": AGENT_ANSWER}])
         self.assertEqual(res["thread_id"], "th_abc123")
         self.assertEqual(res["usage"].get("input_tokens"), 123)
         self.assertEqual(res["events"], 5)
@@ -102,7 +102,7 @@ class WriteAppendTests(unittest.TestCase):
             self.assertFalse(info["harvested"])
             with open(tpath, encoding="utf-8") as fh:
                 rows = [json.loads(x) for x in fh if x.strip()]
-            self.assertEqual(rows, [{"text": AGENT_ANSWER}])
+            self.assertEqual(rows, [{"role": "assistant", "text": AGENT_ANSWER}])
 
 
 @unittest.skipUnless(os.path.isdir(_CLAIMKEEP_HOME), "claimkeep checkout not found")
@@ -208,3 +208,104 @@ class TestStdoutBlobAccepted(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestHarvestSuccessIsVerified(unittest.TestCase):
+    """A harvest counts as done only if a readable brief is on disk.
+
+    `claimkeep precompact` is fail-open by design — a memory layer must never
+    block compaction, so it exits 0 even when it wrote nothing and says so on
+    stderr. The bridge read that exit code as success, reported a `brief_path`
+    for a file that did not exist, and then rotated the live transcript away
+    because it believed the contents were safely harvested. That is not a
+    misleading status line; that is losing the memory it exists to keep.
+    """
+
+    STREAM = "\n".join(
+        [
+            json.dumps(
+                {
+                    "type": "item.completed",
+                    "item": {"type": "agent_message", "text": "Port is 3333 [C:90%]"},
+                }
+            ),
+            json.dumps({"type": "turn.completed", "usage": {"input_tokens": 999_999}}),
+        ]
+    )
+
+    def test_missing_transcript_is_not_a_success(self):
+        with tempfile.TemporaryDirectory() as d:
+            res = writer._harvest(
+                os.path.join(d, "absent.jsonl"), os.path.join(d, "briefs")
+            )
+            self.assertFalse(res["ok"])
+            self.assertTrue(res.get("stderr"), "the reason must not be swallowed")
+
+    def test_no_brief_path_is_reported_when_no_brief_exists(self):
+        with tempfile.TemporaryDirectory() as d:
+            res = writer._harvest(
+                os.path.join(d, "absent.jsonl"), os.path.join(d, "briefs")
+            )
+            # No path at all, rather than a path to a file that was never written.
+            self.assertIsNone(res["brief_path"])
+
+    def test_transcript_is_not_rotated_when_the_harvest_produced_nothing(self):
+        # The transcript is the only copy of what has not been harvested yet.
+        with tempfile.TemporaryDirectory() as d:
+            transcript = os.path.join(d, "live.jsonl")
+            with open(transcript, "w", encoding="utf-8") as fh:
+                fh.write(json.dumps({"text": "Port is 3333 [C:90%]"}) + "\n")
+            original = open(transcript, encoding="utf-8").read()
+
+            def failed_harvest(_transcript, _brief_dir):
+                return {
+                    "ok": False,
+                    "brief_path": None,
+                    "returncode": 0,
+                    "stderr": "precompact failed; no brief was written",
+                }
+
+            real = writer._harvest
+            writer._harvest = failed_harvest
+            try:
+                info = writer.on_run_complete(
+                    self.STREAM,
+                    transcript_path=transcript,
+                    brief_dir=os.path.join(d, "briefs"),
+                )
+            finally:
+                writer._harvest = real
+            self.assertFalse(info["harvested"])
+            self.assertIsNone(info["archived_transcript"])
+            self.assertTrue(
+                os.path.exists(transcript), "live transcript was rotated away"
+            )
+            self.assertIn("3333", open(transcript, encoding="utf-8").read())
+            self.assertTrue(info["harvest_error"])
+
+    def test_unparsable_stdout_is_reported_not_silently_empty(self):
+        # Non-empty stdout that yields no events is a broken pipe or a changed
+        # schema, not a quiet turn.
+        with tempfile.TemporaryDirectory() as d:
+            info = writer.on_run_complete(
+                "not json at all\nstill not json\n",
+                transcript_path=os.path.join(d, "t.jsonl"),
+                brief_dir=os.path.join(d, "briefs"),
+            )
+            self.assertEqual(info["units_appended"], 0)
+            self.assertTrue(info.get("parse_error"), "silent zero on unparsable stdout")
+
+
+class TestUnitsStateTheirAuthor(unittest.TestCase):
+    """The bridge knows these are assistant answers, so it should say so.
+
+    ClaimKeep treats a row with no stated author as the agent's, which is what
+    kept this path working when author filtering arrived. Relying on that
+    default is still a bet on someone else's fallback: the adapter has already
+    filtered to `agent_message`, so it can state the role outright.
+    """
+
+    def test_units_carry_the_assistant_role(self):
+        units = adapter.parse_run(VERIFIED_LINES)["units"]
+        self.assertEqual([u.get("role") for u in units], ["assistant"])
+        self.assertEqual(units[0]["text"], AGENT_ANSWER)

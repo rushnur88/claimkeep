@@ -7,6 +7,7 @@ from typing import Dict, List
 
 from .brief import Brief
 from .prompt import marker_instruction
+from .select import fit_rendered
 
 # Reserved topic prefix the lesson harvester writes; kept here as a constant so
 # the renderer does not import a harvester just to know one string.
@@ -21,18 +22,26 @@ def render(brief: Brief) -> str:
     def _sorted(items: List) -> List:
         return sorted(
             items,
-            key=lambda claim: (-1.0 if claim.confidence is None else -claim.confidence, claim.topic, claim.id or ""),
+            key=lambda claim: (
+                -1.0 if claim.confidence is None else -claim.confidence,
+                claim.topic,
+                claim.id or "",
+            ),
         )
 
     def _line(claim) -> str:
-        confidence = "unknown" if claim.confidence is None else f"{claim.confidence:.2f}"
+        confidence = (
+            "unknown" if claim.confidence is None else f"{claim.confidence:.2f}"
+        )
         return f"- [{confidence}] {claim.text} (topic: {claim.topic}; id: {claim.id})"
 
     # Lessons are rules for the next session, not facts about this one, so they
     # get their own section instead of competing for attention inside Claims.
     lesson_prefix = LESSON_TOPIC + ":"
     lessons = [claim for claim in brief.claims if claim.topic.startswith(lesson_prefix)]
-    facts = [claim for claim in brief.claims if not claim.topic.startswith(lesson_prefix)]
+    facts = [
+        claim for claim in brief.claims if not claim.topic.startswith(lesson_prefix)
+    ]
 
     active = _sorted([claim for claim in facts if claim.is_active])
     superseded = _sorted([claim for claim in facts if not claim.is_active])
@@ -93,14 +102,31 @@ def render(brief: Brief) -> str:
     return "\n".join(lines).rstrip() + "\n"
 
 
-def postcompact_payload(brief: Brief, event: str) -> dict:
+def postcompact_payload(brief: Brief, event: str, budget_chars: int = 0) -> dict:
     """Assemble the context handed back to the agent after a compaction.
 
     At SessionStart the marker instruction rides along, so a fresh session is
     taught the convention the calibration harvester depends on. Repeating it on
-    every PostCompact would spend budget teaching what the agent already knows.
+    every PostCompact would spend budget teaching what the agent already knows —
+    and, since it is part of what reaches the window, it counts against the
+    budget like everything else.
+
+    `budget_chars <= 0` means unbounded. Otherwise the cap is enforced here,
+    against the finished string, because this is the only place that knows what
+    the agent will actually receive.
     """
-    context = render(brief)
-    if event == "SessionStart":
-        context = context + "\n" + marker_instruction()
-    return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": context}}
+
+    def build(b: Brief) -> str:
+        text = render(b)
+        if event == "SessionStart":
+            text = text + "\n" + marker_instruction()
+        return text
+
+    if budget_chars > 0:
+        brief = fit_rendered(brief, budget_chars, build)
+    return {
+        "hookSpecificOutput": {
+            "hookEventName": event,
+            "additionalContext": build(brief),
+        }
+    }

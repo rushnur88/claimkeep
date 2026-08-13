@@ -8,13 +8,14 @@ import glob
 import json
 import os
 import sys
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from . import __version__
 from .brief import Brief, Claim, Supplement
 from .config import default_config
 from .harvesters import get_harvester
 from .harvesters.lessons import LessonHarvester
+from .harvesters.retraction import refutes
 from .lessons import Lesson, LessonStore
 from .prompt import marker_instruction
 from .redact import redact
@@ -23,6 +24,7 @@ from .retrieve import recall
 from .select import apply_budget
 from .stats import collect as collect_stats
 from .stats import render as render_stats
+from .storage import append_private, private_dir, write_private
 
 
 def _now_iso() -> str:
@@ -89,10 +91,10 @@ def _author(obj: Dict[str, Any]) -> Optional[str]:
     return None
 
 
-def _is_agent_row(obj: Dict[str, Any]) -> bool:
-    """Keep the agent's own text, and rows whose format states no author.
+def _role_of(obj: Dict[str, Any]) -> str:
+    """Normalised author of a row. Rows that state no author are the agent's.
 
-    A brief is meant to be what the agent established, but the reader used to
+    A brief is meant to be what the agent established, and the reader used to
     take any row carrying text: user turns, pasted documents, tool results and
     injected system blocks all became claims attributed to the agent. On real
     transcripts the rows carrying `[C:NN%]` split 1318 user to 584 assistant —
@@ -100,19 +102,50 @@ def _is_agent_row(obj: Dict[str, Any]) -> bool:
     an injected system prompt whose instructions demonstrate the marker syntax,
     so the plugin was harvesting "write [C:XX%]" as an established fact.
 
-    Rows with no stated author are kept: that is what the Codex bridge writes
-    (`{"text": ...}`), already filtered to assistant answers upstream. Dropping
-    them would silently empty every brief on that path.
+    Dropping those rows at the door fixed the attribution and broke something
+    else: `retraction` is documented to keep corrections "from the agent and
+    from anyone else", and it never saw them again. Memory that keeps the
+    corrected value and throws away the correction is worse than memory that
+    keeps neither. So the role travels with the text and each harvester decides
+    what it is entitled to; see `_units_for`.
+
+    Rows with no stated author are the agent's: that is what the Codex bridge
+    writes (`{"text": ...}`), already filtered to assistant answers upstream.
     """
     author = _author(obj)
-    return author is None or author == "assistant"
+    return author or "assistant"
 
 
-def _read_transcript(path: str) -> List[str]:
-    units: List[str] = []
+#: Roles whose text may correct the agent, but may never become its own claim.
+_CORRECTION_ROLES = frozenset({"user", "human"})
+#: Harvesters entitled to read corrections addressed to the agent.
+_CORRECTION_AWARE = frozenset({"retraction"})
+
+
+def _units_for(harvester: str, units: Sequence[Tuple[str, str]]) -> List:
+    """The slice of the transcript one harvester is allowed to see.
+
+    `retraction` gets the agent's text plus corrections, in original order and
+    with roles attached, because "you were wrong" only means anything next to
+    the thing it overturns. Everything else gets the agent's own words as plain
+    strings — unchanged interface, and no way for another author's sentence to
+    be stored as a fact the agent established. System and tool rows are claims
+    for nobody and never appear here.
+    """
+    if harvester in _CORRECTION_AWARE:
+        return [
+            (role, text)
+            for role, text in units
+            if role == "assistant" or role in _CORRECTION_ROLES
+        ]
+    return [text for role, text in units if role == "assistant"]
+
+
+def _read_transcript(path: str) -> List[Tuple[str, str]]:
+    """Return `(role, text)` per usable row, newest last, roles normalised."""
+    units: List[Tuple[str, str]] = []
     skipped = 0
     total = 0
-    not_agent = 0
     with open(path, "r", encoding="utf-8") as handle:
         for line in handle:
             if not line.strip():
@@ -126,16 +159,11 @@ def _read_transcript(path: str) -> List[str]:
             if not isinstance(obj, dict):
                 skipped += 1
                 continue
-            if not _is_agent_row(obj):
-                not_agent += 1
-                continue
             text = _extract_text(obj)
             if text:
-                units.append(text)
-    # A transcript that is all other authors is not an error, but a transcript
-    # that yields nothing while holding rows is worth one line on stderr.
-    if not units and not_agent:
-        _warn(f"no assistant rows in {path} ({not_agent} rows by another author)")
+                units.append((_role_of(obj), text))
+    if units and not any(role == "assistant" for role, _ in units):
+        _warn(f"no assistant rows in {path} ({len(units)} rows by another author)")
     # One line, not one per row: a transcript can legitimately hold a few
     # unparsable rows, but a whole file of them means the wrong path was wired.
     if skipped and skipped == total:
@@ -211,12 +239,52 @@ def _carry_lessons(
     return claims
 
 
+def _link_retractions(claims: List[Claim]) -> List[Claim]:
+    """Mark every claim a retraction overturns, so both never read as live.
+
+    `refutes()` has been in the retraction harvester from the start and was
+    never called, so a brief could carry "the port is 3333" at 0.90 next to
+    "correction: the port is 4444" with both rendered under Claims. After
+    compaction the agent restates whichever it reads first and repeats something
+    the transcript already overturned — the failure the harvester exists to
+    prevent, reintroduced one layer up.
+
+    Every match is linked, not just the first: one fact usually reaches the brief
+    in more than one wording — `atomic` and `calibration` both harvest the
+    sentence that states it — and leaving the second copy live would put the
+    refuted value back in front of the agent through the other door.
+    """
+    retractions = [c for c in claims if c.source_harvester == "retraction"]
+    if not retractions:
+        return claims
+    for retraction in retractions:
+        for claim in claims:
+            if claim is retraction or claim.source_harvester == "retraction":
+                continue
+            if claim.superseded_by or not claim.is_active:
+                continue
+            if refutes(retraction.text, claim.text):
+                claim.superseded_by = retraction.id
+                if retraction.supersedes is None:
+                    retraction.supersedes = claim.id
+    return claims
+
+
 def _build_brief(
     transcript: List[str], created_utc: str, source: Dict[str, Any]
 ) -> Brief:
     config = default_config()
+    # Accept both shapes: (role, text) pairs from `_read_transcript`, and plain
+    # strings, which every caller passed before roles existed and which mean
+    # "the agent said this".
+    units: List[Tuple[str, str]] = [
+        (str(u[0]), str(u[1]))
+        if isinstance(u, (tuple, list)) and len(u) == 2
+        else ("assistant", str(u))
+        for u in transcript
+    ]
     if getattr(config, "redact", True):
-        transcript = [redact(unit) for unit in transcript]
+        units = [(role, redact(text)) for role, text in units]
     claims: List[Claim] = []
     supplements: List[Supplement] = []
     # harvest_enabled=False yields an empty (naive) brief — the control arm for
@@ -224,11 +292,12 @@ def _build_brief(
     if getattr(config, "harvest_enabled", True):
         for name in config.harvesters:
             harvester = get_harvester(name)()
-            for item in harvester.harvest(transcript, config):
+            for item in harvester.harvest(_units_for(name, units), config):
                 if isinstance(item, Claim):
                     claims.append(item)
                 elif isinstance(item, Supplement):
                     supplements.append(item)
+        claims = _link_retractions(claims)
         claims = _carry_lessons(claims, config, created_utc, source)
     brief = Brief(
         created_utc=created_utc, source=source, claims=claims, supplement=supplements
@@ -256,11 +325,7 @@ def _probe_log(brief: Brief, source: Dict[str, Any], created_utc: str) -> None:
             "harvest_enabled": bool(getattr(default_config(), "harvest_enabled", True)),
             "brief": brief.to_dict(),
         }
-        parent = os.path.dirname(os.path.abspath(path))
-        if parent:
-            os.makedirs(parent, exist_ok=True)
-        with open(path, "a", encoding="utf-8") as handle:
-            handle.write(json.dumps(record, ensure_ascii=False) + "\n")
+        append_private(path, json.dumps(record, ensure_ascii=False) + "\n")
     except Exception as exc:
         _warn("probe log not written", exc)
         return
@@ -371,16 +436,13 @@ def _cmd_precompact(args: argparse.Namespace) -> int:
         if not out:
             config = default_config()
             brief_dir = config.expanded_brief_dir()
-            os.makedirs(brief_dir, exist_ok=True)
+            private_dir(brief_dir)
             stamp = created_utc.replace(":", "").replace("-", "")
             session = source.get("session") or "session"
             out = os.path.join(brief_dir, f"{stamp}-{session}.json")
         else:
-            parent = os.path.dirname(os.path.abspath(out))
-            if parent:
-                os.makedirs(parent, exist_ok=True)
-        with open(out, "w", encoding="utf-8") as handle:
-            handle.write(brief.to_json())
+            private_dir(os.path.dirname(os.path.abspath(out)))
+        write_private(out, brief.to_json())
         _probe_log(brief, source, created_utc)
         print(out)
         return 0
@@ -398,7 +460,9 @@ def _cmd_postcompact(args: argparse.Namespace) -> int:
             return 0
         with open(brief_path, "r", encoding="utf-8") as handle:
             brief = Brief.from_json(handle.read())
-        print(json.dumps(postcompact_payload(brief, args.event), ensure_ascii=False))
+        budget = int(getattr(default_config(), "budget_chars", 0) or 0)
+        payload = postcompact_payload(brief, args.event, budget)
+        print(json.dumps(payload, ensure_ascii=False))
         return 0
     except Exception as exc:
         _warn("postcompact failed; nothing was re-injected", exc)

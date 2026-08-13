@@ -81,5 +81,49 @@ class TestMarkerScope(unittest.TestCase):
             self.assertEqual(claim.source_span, unit)
 
 
+
+class TestSentenceBoundary(unittest.TestCase):
+    """A marker annotates its sentence, not everything sharing the line.
+
+    Scoping to the last line fixed the multi-marker case and left this one: an
+    unmarked sentence sitting in front of a marked one on the same line still
+    inherited the confidence. "This is explicitly unmarked. Port is 3333 [C:90%]"
+    was stored whole, at 90%.
+    """
+
+    def test_preceding_sentence_on_the_same_line_is_dropped(self):
+        claims = harvest("This is explicitly unmarked. Port is 3333 [C:90%]")
+        self.assertEqual(len(claims), 1)
+        self.assertEqual(claims[0].confidence, 0.9)
+        self.assertIn("3333", claims[0].text)
+        self.assertNotIn("explicitly unmarked", claims[0].text)
+
+    def test_leading_marker_takes_only_its_own_sentence(self):
+        claims = harvest("[C:80%, basis: docs] Port is 3333. An unrelated remark follows.")
+        self.assertEqual(len(claims), 1)
+        self.assertIn("3333", claims[0].text)
+        self.assertNotIn("unrelated remark", claims[0].text)
+
+    def test_two_marked_sentences_on_one_line_stay_separate(self):
+        claims = harvest("Port is 3333 [C:90%]. The retry ceiling is 5 [C:70%].")
+        self.assertEqual(len(claims), 2)
+        self.assertEqual([c.confidence for c in claims], [0.9, 0.7])
+        self.assertNotIn("retry", claims[0].text)
+        self.assertNotIn("3333", claims[1].text)
+
+    def test_question_and_exclamation_also_end_a_sentence(self):
+        claims = harvest("Did that work? The port is 3333 [C:90%]")
+        self.assertNotIn("Did that work", claims[0].text)
+
+    def test_a_decimal_point_does_not_end_a_sentence(self):
+        # "1.2.3" must not be read as three sentences.
+        claims = harvest("We shipped version 1.2.3 to production [C:85%]")
+        self.assertIn("1.2.3", claims[0].text)
+
+    def test_multi_line_statement_keeps_its_own_line(self):
+        claims = harvest("Checked three things:\n- the port is 3333 [C:90%]")
+        self.assertIn("3333", claims[0].text)
+        self.assertNotIn("Checked three things", claims[0].text)
+
 if __name__ == "__main__":
     unittest.main()

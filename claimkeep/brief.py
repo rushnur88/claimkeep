@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
-import hashlib
 import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Dict, Iterable, List, Optional
-
 
 SCHEMA_VERSION = 1
 
@@ -68,7 +67,9 @@ class Claim:
         return cls(
             id=str(data["id"]),
             text=str(data["text"]),
-            confidence=None if data.get("confidence") is None else float(data["confidence"]),
+            confidence=None
+            if data.get("confidence") is None
+            else float(data["confidence"]),
             topic=str(data["topic"]),
             source_harvester=str(data["source_harvester"]),
             ts=data.get("ts"),
@@ -150,7 +151,9 @@ class Brief:
         latest_by_id: Dict[str, tuple[int, Claim]] = {}
         for index, claim in enumerate(claims):
             latest_by_id[str(claim.id)] = (index, claim)
-        ordered = [item for item in sorted(latest_by_id.values(), key=lambda item: item[0])]
+        ordered = [
+            item for item in sorted(latest_by_id.values(), key=lambda item: item[0])
+        ]
 
         by_topic: Dict[str, List[Claim]] = {}
         for _, claim in ordered:
@@ -158,7 +161,13 @@ class Brief:
 
         for topic_claims in by_topic.values():
             newest = topic_claims[-1]
-            newest.superseded_by = None
+            # Clear only a supersession that came from this topic's own history.
+            # A retraction refutes by content and lives under its own topic, so
+            # being newest here says nothing about whether it still holds —
+            # blanket clearing put refuted claims back among the live ones.
+            sibling_ids = {claim.id for claim in topic_claims}
+            if newest.superseded_by in sibling_ids:
+                newest.superseded_by = None
             if len(topic_claims) > 1:
                 newest.supersedes = topic_claims[-2].id
             for earlier in topic_claims[:-1]:
@@ -185,7 +194,10 @@ class Brief:
         }
 
     def to_json(self) -> str:
-        return json.dumps(self.to_dict(), ensure_ascii=False, sort_keys=True, indent=2) + "\n"
+        return (
+            json.dumps(self.to_dict(), ensure_ascii=False, sort_keys=True, indent=2)
+            + "\n"
+        )
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "Brief":
@@ -199,7 +211,9 @@ class Brief:
             created_utc=data.get("created_utc"),
             source=data.get("source"),
             claims=[Claim.from_dict(item) for item in data.get("claims", [])],
-            supplement=[Supplement.from_dict(item) for item in data.get("supplement", [])],
+            supplement=[
+                Supplement.from_dict(item) for item in data.get("supplement", [])
+            ],
             open_threads=list(data.get("open_threads", [])),
             last_user_ask=data.get("last_user_ask"),
             narrative=list(data.get("narrative", [])),

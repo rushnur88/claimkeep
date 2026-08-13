@@ -2,6 +2,65 @@
 
 ## Unreleased
 
+- **Fixed: a marker still covered its neighbour on the same line.** Scoping a
+  marker to the last line left the case where two sentences share one:
+  `This is explicitly unmarked. Port is 3333 [C:90%]` was stored whole, so the
+  unmarked sentence carried 90%. A marker now takes its own sentence — the last
+  one before a trailing marker, the first one after a leading marker. The
+  boundary requires whitespace after terminal punctuation, so `version 1.2.3`
+  stays in one piece. Tests: `tests/test_marker_scope.py`.
+- **Fixed: external corrections were lost.** Filtering the transcript to
+  assistant rows fixed attribution and silently broke the other half of the
+  contract: `retraction` is documented to keep corrections "from the agent and
+  from anyone else", and never saw a user turn again. A user answering
+  "correction: the port is 4444" vanished while the superseded 3333 stayed in
+  memory unchallenged — memory that keeps the corrected value and discards the
+  correction is worse than memory that keeps neither. Role is now provenance
+  carried to each harvester rather than a filter at the door: `calibration`,
+  `atomic`, `regex_floor` and `lessons` see the agent's own words;
+  `retraction` also sees corrections; system and tool rows are claims for
+  nobody. Tests: `tests/test_external_corrections.py`.
+- **Fixed: a correction never marked what it refuted.** `refutes()` shipped in
+  the retraction harvester and was never called from anywhere, so a brief could
+  carry "the port is 3333" at 0.90 and "correction: the port is 4444" side by
+  side, both under Claims as live. After compaction the agent restates whichever
+  it reads first — confidently repeating something the transcript had already
+  overturned, which is the failure the harvester was written to prevent.
+  Corrections now mark every wording they refute (one fact usually reaches the
+  brief through both `atomic` and `calibration`, and leaving the second copy
+  live puts the stale value back in front of the agent). Topic-based
+  supersession also stopped clearing a mark that came from outside its own
+  topic, which was silently undoing the link.
+- **Changed: the Codex bridge states the author of the rows it writes**
+  (`{"role": "assistant", "text": ...}`). Roleless rows are still read as the
+  agent's, so transcripts from older builds keep working, but a producer that
+  knows the answer should not lean on the reader's default.
+- **Fixed: the budget was advisory.** It counted `len(text) + 1` per item, but
+  an item reaches the agent wrapped in a heading, a confidence, a topic and an
+  id — and at SessionStart the marker instruction rides along too. A brief
+  reporting 2,870 used characters produced 7,799 characters of context, 2.7x the
+  accounting. The cap is now settled against the rendered payload, by binary
+  search over the same deterministic priority order, and the report carries
+  `rendered_chars`: the size the brief actually costs, not a smaller number it
+  could not stand behind. Tests: `tests/test_budget_is_a_hard_cap.py`.
+- **Fixed: the Codex bridge called a failed harvest a success.**
+  `claimkeep precompact` is fail-open by design and exits 0 even when it wrote
+  nothing, explaining itself on stderr. The bridge read that exit code as
+  success, reported a `brief_path` for a file that did not exist, and — because
+  rotation is gated on the same flag — archived the live transcript on the
+  strength of it, losing the only unharvested copy. Success now requires a file
+  that exists, is non-empty, parses as JSON and carries the schema's required
+  keys, and rotation happens only after those checks. Non-empty stdout that
+  decodes to no events returns an explicit `parse_error` instead of a silent
+  zero. Tests: `integrations/codex/test_codex_adapter.py`.
+- **Fixed: briefs were world-readable and written in place.** Under a 022 umask
+  the store landed as 0755 directories and 0644 files, and the brief was written
+  with a plain truncating open, so a crash mid-write replaced the previous brief
+  with a truncated one. New `claimkeep/storage.py`: directories 0700, files
+  0600, atomic write via a temporary file beside the target, fsync and rename,
+  and appends to the lesson store and probe log take an advisory lock where the
+  platform has one. Tests: `tests/test_storage_privacy.py`.
+
 - **Fixed: a confidence marker applied to the entire message.** `calibration`
   searched for the first marker, stripped every marker, and stored the whole
   message as one claim at that first confidence. On 40 real transcripts, 45% of

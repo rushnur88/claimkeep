@@ -66,6 +66,24 @@ def _tidy(text: str, marker: "re.Pattern") -> str:
     return marker.sub("", text).strip().strip("-•*—,;:.)（(").strip()
 
 
+# End of sentence: terminal punctuation followed by whitespace. The trailing
+# whitespace requirement is what keeps "version 1.2.3" and "e.g. this" in one
+# piece — a decimal point has no space after it.
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?…])\s+")
+
+
+def _last_sentence(text: str) -> str:
+    """The sentence a trailing marker annotates."""
+    parts = [p for p in _SENTENCE_SPLIT.split(text) if p.strip()]
+    return parts[-1] if parts else text
+
+
+def _first_sentence(text: str) -> str:
+    """The sentence a leading marker annotates."""
+    parts = [p for p in _SENTENCE_SPLIT.split(text) if p.strip()]
+    return parts[0] if parts else text
+
+
 def _scoped_statements(unit: str, marker: "re.Pattern"):
     """Yield (statement, confidence) — one per marker, scoped to that marker.
 
@@ -78,20 +96,22 @@ def _scoped_statements(unit: str, marker: "re.Pattern"):
     explicitly not a fact" ended up stored at 90%.
 
     The statement runs from the previous marker to this one, trimmed to its last
-    non-empty line: a marker ends its own line far more often than it ends a
-    paragraph, and taking the whole span would drag headings and preamble in.
-    Text after the final marker is deliberately dropped — it carries no marker,
-    so it is not a claim.
+    non-empty line and then to the last sentence on it: a marker ends its own
+    line far more often than it ends a paragraph, and an unmarked sentence
+    sharing the line must not inherit the confidence of the marked one. Text
+    after the final marker is deliberately dropped — it carries no marker, so it
+    is not a claim.
     """
     matches = list(marker.finditer(unit))
     for index, match in enumerate(matches):
         before = unit[(matches[index - 1].end() if index else 0) : match.start()]
         lines = [line for line in before.split("\n") if line.strip()]
-        text = _tidy(lines[-1], marker) if lines else ""
+        text = _tidy(_last_sentence(lines[-1]), marker) if lines else ""
         if not text:
             # "[C:80%] the statement" — the marker leads instead of trailing.
             nxt = matches[index + 1].start() if index + 1 < len(matches) else len(unit)
-            text = _tidy(unit[match.end() : nxt].split("\n", 1)[0], marker)
+            after = unit[match.end() : nxt].split("\n", 1)[0]
+            text = _tidy(_first_sentence(after), marker)
         if text:
             yield text, _confidence(match)
 

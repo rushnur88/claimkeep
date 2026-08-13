@@ -106,7 +106,10 @@ def parse_run(lines: Iterable[str]) -> Dict[str, Any]:
     `units` are ready to append verbatim to a ClaimKeep transcript file.
     """
     events = list(iter_events(lines))
-    units = [{"text": t} for t in iter_agent_messages(events)]
+    # State the author rather than relying on the reader's default. Roleless rows
+    # are still accepted there for transcripts written by older builds, but a
+    # producer that knows the answer should say it.
+    units = [{"role": "assistant", "text": t} for t in iter_agent_messages(events)]
     usage = last_usage(events) or {}
     thread_id = next(
         (
