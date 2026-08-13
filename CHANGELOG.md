@@ -1,5 +1,46 @@
 # Changelog
 
+## Unreleased
+
+- **Added: every claim states when it was recorded, and live-state claims are
+  marked for rechecking.** A brief carries what was true when it was written;
+  re-injected a day later it reads as a statement about now. On a production
+  store, sentences saying the current version was `0.2.0` sat in a brief
+  rendered after `0.3.1` had shipped, with `superseded_by` empty on all of them.
+
+  Supersession cannot close this and the reason is structural: it matches claims
+  by topic, a topic is derived from phrasing, and four sentences about one
+  subject produce four keys with nothing linking them. Cross-brief resolution is
+  further limited to the parsed `subject|predicate` key on purpose — without
+  that limit it marked 18.4% of a real corpus superseded against 1%, nearly all
+  of it wrong.
+
+  So the render stops implying currency it cannot guarantee. Each claim shows
+  `recorded <date>` — its own date, never the time of rendering — and claims
+  asserting a live state (version, deployment, service status, "current",
+  "still", "now", and their Russian equivalents) carry `VERIFY CURRENT`.
+  Tests: `tests/test_recorded_and_verify.py`.
+
+  The detector was tuned against 1,266 stored claims rather than guessed at. A
+  first version marked 67% of them: Russian stems matched inside longer words —
+  `порт` inside *паспортов*, `уже` inside *нужен* — so every alternative is now
+  anchored at a word start. A second still marked 40%, with "сейчас" heading
+  half of all matches and almost always meaning "сейчас собираю…", a description
+  of an action rather than a value that goes stale. Dropping it brought the rate
+  to 19%; "сейчас версия 0.2.0" still marks, on `версия`.
+
+  The date is stated once in the header and repeated on a line only when that
+  claim is older than the brief around it. The first version printed it on every
+  line and cost real ground — 25 characters per claim, at a budget where
+  characters are facts, moving the headline from +15.9 to +13.0 points. Saying
+  it once brings that to +15.4 and the marker-free arm to +11.5: the same
+  guarantee for a tenth of the price.
+- **Documented: what the brief is accurate about.** Atomic facts — a port, a
+  hash, a version as "X is Y" — are what supersession maintains. Narrative
+  statements about system state are kept verbatim, never expire, and are a
+  record of a conversation rather than a source of truth. The README says this
+  plainly instead of leaving a reader to discover it.
+
 ## 0.3.1 — 2026-08-13
 
 First release published by GitHub Actions through OIDC rather than an API token.

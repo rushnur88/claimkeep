@@ -29,12 +29,12 @@ reconstruct by reasoning, and the parts that turn a resumed session into a re-in
 sessions are short, you will never notice this. If you run long refactors, multi-day debugging, or
 agent pipelines that compact several times a day, you have paid for it repeatedly.
 
-**Against the real control, at equal budget: 18.0% → 33.9% of frozen probes recovered, +15.9
-points** — and on the family built to be unwinnable, 7.3% → 29.4%.
+**Against the real control, at equal budget: 18.2% → 33.6% of frozen probes recovered, +15.4
+points** — and on the family built to be unwinnable, 7.4% → 29.3%.
 
 The control is not a simulation. Claude Code writes its own compaction summary to the transcript
-(`compact_boundary`, `isCompactSummary`), so the naive arm was already on disk — 69 real compactions,
-1,491 probes frozen before any result was seen. Each arm was given exactly the number of characters
+(`compact_boundary`, `isCompactSummary`), so the naive arm was already on disk — 68 real compactions,
+1,466 probes frozen before any result was seen. Each arm was given exactly the number of characters
 the native summary spent on that same compaction, because an unbounded brief is not a comparison.
 Both arms run the shipped code: the full harvester set, supersession, the budget, and the renderer
 that produces what the agent actually receives.
@@ -43,15 +43,15 @@ By probe family, at equal budget:
 
 | family | native | ClaimKeep | |
 |---|---|---|---|
-| `fact` (bare number + word) | 7.3% | **29.4%** | **adversarial** — nothing in the plugin targets these |
-| `claim` (marked `[C:NN%]`) | 8.2% | 35.8% | the native summary barely carries these |
-| `hash` | 57.5% | 52.7% | native summary ahead |
-| `path` | 72.2% | 29.9% | native summary well ahead |
+| `fact` (bare number + word) | 7.4% | **29.3%** | **adversarial** — nothing in the plugin targets these |
+| `claim` (marked `[C:NN%]`) | 8.4% | 35.3% | the native summary barely carries these |
+| `hash` | 57.8% | 51.4% | native summary ahead |
+| `path` | 73.4% | 29.8% | native summary well ahead |
 
-Per compaction: **54 wins, 6 draws, 9 losses** out of 69, median +16.7, worst −19.2.
+Per compaction: **52 wins, 7 draws, 9 losses** out of 68, median +15.4, worst −26.9.
 
 **Read the losses before the total.** At equal budget this trades paths and hashes for statements and
-prose facts, and the trade is not subtle: paths drop from 72.2% to 29.9%. A rendered brief spends
+prose facts, and the trade is not subtle: paths drop from 73.4% to 29.8%. A rendered brief spends
 characters on structure — a heading, a confidence, a topic and an id around every item — so fewer
 items fit than the same budget of raw summary text holds. If what your compactions cost you is file
 paths, the native summary is better at keeping them than this is. If it is the reasoning, the
@@ -79,20 +79,20 @@ marker-defined by construction. The same 69 compactions.
 
 | arm | overall | `fact` | `hash` | `path` |
 |---|---|---|---|---|
-| native summary | 21.4% | 7.3% | 57.5% | 72.2% |
-| ClaimKeep, markers present | 33.3% | 29.4% | 52.7% | 29.9% |
-| ClaimKeep, markers stripped | **34.1%** | 30.8% | 51.6% | 28.9% |
+| native summary | 21.6% | 7.4% | 57.8% | 73.4% |
+| ClaimKeep, markers present | 33.1% | 29.3% | 51.4% | 29.8% |
+| ClaimKeep, markers stripped | **33.6%** | 30.6% | 49.2% | 28.7% |
 
-**+11.9 points with markers, +12.7 without.** A marker-free install is not the degraded case: on
-these families the two arms are within a point of each other, 45 wins to 19 losses, median +12.5.
+**+11.5 points with markers, +12.1 without.** A marker-free install is not the degraded case: on
+these families the two arms are within a point of each other.
 
 That is worth sitting with, because it says the markers are not what carries this result. Strip them
 and `calibration` still finds nothing, but `atomic` and `regex_floor` between them keep almost as
 much — the gain here is in `fact`, prose values that the native summary drops and both arms of this
 plugin keep at roughly four times the rate. Markers buy the `claim` family in the table above (8.2%
-against 35.8%), which is the agent's own reasoning rather than the values in it.
+against 35.3%), which is the agent's own reasoning rather than the values in it.
 
-`path` is the other half of the same sentence: 72.2% in the native summary against 29.9% here, in
+`path` is the other half of the same sentence: 73.4% in the native summary against 29.8% here, in
 both arms. Rendering costs characters, and at a fixed budget those characters come out of how many
 items fit. This is the trade the plugin makes, not a knob it is missing.
 
@@ -138,6 +138,48 @@ Three properties follow from that scope, and they are the reasons to prefer it o
 - **It refuses to fake a zero.** If retractions cannot be measured, `stats` reports *not measurable*
   rather than `0`. A metric that cannot distinguish "clean" from "not instrumented" is the exact bug
   this package is built to avoid.
+
+## What this is accurate about, and what it is not
+
+The brief is two different things at once, and they are not equally reliable.
+
+**Atomic facts** — a port, a hash, a path, a version stated as "X is Y". These are what
+supersession is built for: a later reading marks the earlier one, within a brief and across the
+whole store, so the value you get back is the current one.
+
+**Narrative statements** — a paragraph describing what the system is doing, what was decided, what
+still needs work. These are kept verbatim and never expire. Supersession cannot resolve them,
+because it matches claims by topic and a topic is derived from phrasing: four sentences about one
+subject produce four different keys and no link between them. So a brief written yesterday can
+still say the current version is 0.2.0 after 0.3.1 has shipped, and nothing in the mechanism
+notices.
+
+Rather than imply otherwise, the render says so. Every claim carries the date it was recorded, and
+claims that assert a live state — a version, a deployment, a service status, anything phrased as
+"current", "still", "now" — are marked `VERIFY CURRENT`:
+
+```
+## Claims
+- [0.90 · recorded 2026-08-13 · VERIFY CURRENT] The published version is 0.3.1 (topic: ...)
+- [0.80 · recorded 2026-08-11] We chose sqlite over postgres for the write pattern (topic: ...)
+```
+
+Treat the first kind as memory and the second as a record of a conversation. For anything marked
+`VERIFY CURRENT`, check the source before acting on it.
+
+The mark is deliberately narrow. Tuned on a store of 1,266 claims, it fires on 19% of them — an
+early version reached 67%, and a mark on two claims in three is a mark nobody reads. Two things did
+that damage. Russian stems matched inside longer words, so `порт` fired on *паспортов*; every
+alternative is now anchored at a word start. And "сейчас" turned out to head half of all matches,
+almost always as "сейчас собираю…" — a description of what someone was doing, not a value that goes
+quietly out of date. It was dropped. A statement like "сейчас версия 0.2.0" still marks, on
+`версия`.
+
+The marks cost almost nothing, and the numbers above include what they do cost. A first version
+repeated the same date on every line and moved the headline from +15.9 to +13.0 points — 25 wasted
+characters per claim, at a budget where characters are facts. Stating the date once in the header
+and only on lines that differ from it brings that back to +15.4: a tenth of the original price for
+the same guarantee.
 
 ## Recall from older sessions
 
