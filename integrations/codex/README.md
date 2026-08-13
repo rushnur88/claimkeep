@@ -26,7 +26,7 @@ available if you would rather prepend it to a prompt yourself.
 ```bash
 git clone https://github.com/rushnur88/claimkeep
 cd claimkeep/integrations/codex
-python3 -m unittest test_codex_adapter -v      # expect 7 OK, none skipped
+python3 -m unittest test_codex_adapter -v      # expect 9 OK, none skipped
 ```
 
 The tests find the package by walking up from their own location, so a clone needs no setup. If you
@@ -92,7 +92,8 @@ run is an event stream, and the assistant's answer arrives as:
 There is no `response.output_text.delta` event — the text is only in `item.completed`. Token usage
 comes from `turn.completed.usage.input_tokens`, which is what the threshold reads.
 
-Verified against **Codex CLI 0.145.0**. If a later version changes the event names, the adapter is
+Verified against **Codex CLI 0.145.0**, and re-verified unchanged on **0.147.0** with a live `codex
+exec --json` run. If a later version changes the event names, the adapter is
 where to look: it is the only file that knows the schema, and `test_codex_adapter.py` pins it.
 
 ## Status

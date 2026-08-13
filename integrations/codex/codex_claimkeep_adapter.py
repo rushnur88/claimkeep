@@ -3,7 +3,8 @@
 
 Stdlib-only (0 deps), like the ClaimKeep package it feeds.
 
-VERIFIED against Codex CLI 0.145.0 (real exec run, 2026-07-22). Event stream
+VERIFIED against Codex CLI 0.145.0 (real exec run, 2026-07-22) and re-verified
+unchanged on 0.147.0 (real exec run, 2026-08-13). Event stream
 on stdout when invoked as `codex exec --json --skip-git-repo-check < /dev/null`:
 
     {"type":"thread.started","thread_id":"..."}
@@ -19,6 +20,7 @@ The bridge target is deliberately the SAME shape ClaimKeep's own `cli._read_tran
 already consumes: one JSON object per line carrying a `text` field. So downstream we can run
 the published `claimkeep precompact --transcript <file>` unchanged — no fork of the package.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,7 +33,16 @@ AGENT_MESSAGE = "agent_message"
 
 def iter_events(lines: Iterable[str]) -> Iterator[Dict[str, Any]]:
     """Yield decoded JSON objects, one per non-empty line. Tolerant: skips any line that
-    is not a JSON object (e.g. stray stderr text that leaked into the stream)."""
+    is not a JSON object (e.g. stray stderr text that leaked into the stream).
+
+    A whole stdout blob is accepted as well as a sequence of lines. `on_run_complete`
+    takes the blob, so passing the same blob here is the natural thing to try — and
+    iterating a str yields characters, none of which parse, so the run came back
+    empty with no error at all. Silent zero instead of a complaint is the one
+    failure this project refuses to ship.
+    """
+    if isinstance(lines, str):
+        lines = lines.splitlines()
     for line in lines:
         line = line.strip()
         if not line:
@@ -98,11 +109,19 @@ def parse_run(lines: Iterable[str]) -> Dict[str, Any]:
     units = [{"text": t} for t in iter_agent_messages(events)]
     usage = last_usage(events) or {}
     thread_id = next(
-        (ev.get("thread_id") for ev in events
-         if ev.get("type") == "thread.started" and ev.get("thread_id")),
+        (
+            ev.get("thread_id")
+            for ev in events
+            if ev.get("type") == "thread.started" and ev.get("thread_id")
+        ),
         None,
     )
-    return {"units": units, "usage": usage, "thread_id": thread_id, "events": len(events)}
+    return {
+        "units": units,
+        "usage": usage,
+        "thread_id": thread_id,
+        "events": len(events),
+    }
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -110,10 +129,17 @@ def main(argv: Optional[List[str]] = None) -> int:
         prog="codex_claimkeep_adapter",
         description="Convert `codex exec --json` JSONL to ClaimKeep transcript units.",
     )
-    ap.add_argument("--in", dest="inp", default="-",
-                    help="codex --json JSONL file, or - for stdin (default)")
-    ap.add_argument("--usage", action="store_true",
-                    help="also print the final usage block as JSON to stderr")
+    ap.add_argument(
+        "--in",
+        dest="inp",
+        default="-",
+        help="codex --json JSONL file, or - for stdin (default)",
+    )
+    ap.add_argument(
+        "--usage",
+        action="store_true",
+        help="also print the final usage block as JSON to stderr",
+    )
     args = ap.parse_args(argv)
 
     if args.inp == "-":

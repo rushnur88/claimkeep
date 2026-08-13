@@ -36,6 +36,12 @@
   agreement rather than retention. `path` retention fell, 80.2% -> 62.5%, since
   short scoped claims are packed before the supplement and crowd floor items
   out at equal budget.
+- **Fixed: `parse_run` returned empty on a stdout blob.** It accepted only a
+  sequence of lines, so handing it the same string `on_run_complete` takes
+  iterated characters, parsed none, and returned `units=0, thread_id=None,
+  usage={}` with no error — a run that simply looked empty. It now accepts
+  either. Found against a live Codex CLI 0.147.0 stream, where the event schema
+  itself was confirmed unchanged from 0.145.0.
 - **Fixed: two tests left files open** (`test_smoke.py`, `test_empty_diagnosis.py`).
 
 - **Fixed: the read path was partially blind in Russian.** The tokenizer matched
