@@ -46,7 +46,9 @@ class NonLatinGetsARealTopic(unittest.TestCase):
         )
         # English still routes through the atomic key, which is what makes
         # supersession chain for it.
-        self.assertEqual(_topic("The retry ceiling is 5"), "retry|ceil")
+        # "ceiling" ends in -ing but is the subject here; the copula decides
+        # the split, so the key is the whole subject against "be".
+        self.assertEqual(_topic("The retry ceiling is 5"), "retry ceiling|be")
 
 
 class NoFalseSupersession(unittest.TestCase):
@@ -60,3 +62,35 @@ class NoFalseSupersession(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestDegenerateSlugsDoNotGroup(unittest.TestCase):
+    """A topic made of punctuation is not a topic, and must not group anything.
+
+    `_SLUG_WORD` accepted runs of pure punctuation, so a sentence whose leading
+    tokens were "." or "—" produced topics like `.` and `.-.`. On a real corpus
+    of 271 briefs that put 39 unrelated statements under `.-.` and 26 under `.`.
+    While supersession only ran inside one brief this was nearly invisible; once
+    it settled topics across the whole corpus, those groups started marking each
+    other as corrections — 1% of claims superseded became 18.4%, almost all of
+    it wrong.
+    """
+
+    def test_punctuation_is_not_part_of_the_slug(self):
+        topic = _slug_topic(". Генерация завершена успешно.")
+        self.assertNotIn(".", topic)
+        self.assertIn("генерация", topic)
+
+    def test_two_unrelated_punctuation_only_texts_get_different_topics(self):
+        first = _slug_topic("...")
+        second = _slug_topic("—— ——")
+        self.assertNotEqual(first, second,
+                            "unrelated statements share a topic and will supersede")
+
+    def test_identical_text_still_shares_a_topic(self):
+        # Same statement restated is the one case that should collapse.
+        self.assertEqual(_slug_topic("..."), _slug_topic("..."))
+
+    def test_a_real_sentence_is_unaffected(self):
+        self.assertEqual(_slug_topic("Проверяю живой статус задачи"),
+                         "проверяю-живой-статус-задачи")

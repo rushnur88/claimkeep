@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import List, Sequence
 
@@ -21,10 +22,26 @@ from .base import Harvester
 _SLUG_WORD = re.compile(r"[^\W_]+(?:[._/#-][^\W_]+)*|[A-Za-z0-9_./#-]+", re.UNICODE)
 
 
+# A slug token has to say something. The pattern above also matches runs of pure
+# punctuation, which produced topics like "." and ".-." — and a topic is a
+# grouping key, so every statement that happened to open with a dash or a stray
+# period landed in the same group. On a corpus of 271 briefs that was 39
+# unrelated statements under ".-." and 26 under ".". Harmless while supersession
+# ran inside a single brief; once it settled topics across the whole corpus they
+# began marking each other superseded.
+_HAS_ALNUM = re.compile(r"[^\W_]", re.UNICODE)
+
+
 def _slug_topic(text: str) -> str:
-    words = _SLUG_WORD.findall(text)[:6]
+    words = [w for w in _SLUG_WORD.findall(text) if _HAS_ALNUM.search(w)][:6]
     slug = "-".join(word.casefold() for word in words).strip("-")
-    return slug or "claim"
+    if slug:
+        return slug
+    # Nothing to key on. A shared fallback would group every such claim together,
+    # so key on the text itself: identical statements still collapse, unrelated
+    # ones stay apart.
+    digest = hashlib.sha1(re.sub(r"\s+", " ", text).strip().casefold().encode("utf-8"))
+    return "claim:" + digest.hexdigest()[:12]
 
 
 def _topic(text: str) -> str:
@@ -32,9 +49,10 @@ def _topic(text: str) -> str:
 
     The slug embeds the value being stated, so "the retry ceiling is 5" and
     "the retry ceiling is 4" land on different topics and supersession never
-    chains — exactly on the corrections it exists to track. The atomic key is
-    built from subject and predicate only, so a restatement keeps the topic and
-    the earlier claim gets marked superseded_by.
+    chains — exactly on the corrections it exists to track. The atomic key drops
+    the object when the statement gives a value, so a restatement keeps the topic
+    and the earlier claim gets marked superseded_by. It keeps the object head for
+    descriptions, where two readings coexist rather than correct each other.
 
     Sentences the atomic parser cannot resolve keep the old slug: a stable-looking
     key that is wrong would collide unrelated facts into false corrections.

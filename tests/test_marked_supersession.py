@@ -21,7 +21,9 @@ class TestTopicIsStableAcrossCorrection(unittest.TestCase):
         )
 
     def test_topic_uses_the_atomic_key(self):
-        self.assertEqual(_topic("The retry ceiling is 5"), "retry|ceil")
+        # "ceiling" ends in -ing but is the subject here; the copula decides
+        # the split, so the key is the whole subject against "be".
+        self.assertEqual(_topic("The retry ceiling is 5"), "retry ceiling|be")
 
     def test_unrelated_facts_do_not_collide(self):
         self.assertNotEqual(

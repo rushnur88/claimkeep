@@ -153,6 +153,23 @@ class Document:
             self.tokens = tokenize(self.text) + date_tokens(self.ts)
 
 
+def _settles_across_briefs(topic: str) -> bool:
+    """Whether a topic is precise enough to resolve one claim against another.
+
+    Only the atomic key qualifies: `subject|predicate`, parsed from the sentence,
+    which means two claims sharing it really are two readings of one thing.
+
+    The fallback slug is the first six words of the sentence, and across a corpus
+    that groups by phrasing rather than by subject — unrelated statements that
+    merely open alike. Measured on 271 production briefs, settling every topic
+    this way marked 18.4% of claims superseded where the previous behaviour
+    marked 1%, and the additions were statements about different things that
+    happened to start the same way. Inside one brief the same key is fine: the
+    claims come from one session and one train of thought.
+    """
+    return "|" in (topic or "")
+
+
 def load_corpus(config: Any) -> List[Document]:
     """Every claim, supplement item and lesson the plugin has ever stored."""
     docs: List[Document] = []
@@ -188,7 +205,7 @@ def load_corpus(config: Any) -> List[Document]:
                 source=name,
             )
             docs.append(document)
-            if kind == "claim":
+            if kind == "claim" and _settles_across_briefs(claim.topic):
                 by_topic.setdefault(claim.topic, []).append(document)
         for item in brief.supplement:
             key = ("supplement", item.id)

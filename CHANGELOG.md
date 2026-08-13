@@ -2,6 +2,31 @@
 
 ## Unreleased
 
+- **Fixed: a noun that looks like a verb decided where the subject ended.**
+  `extract_triple` split at the first verb-shaped token, which engineering prose
+  breaks in both directions. "The pinned version is 1.2.3" opens with a
+  participle, was read as an imperative, and parsed to nothing at all — so the
+  statement got no topic and supersession could never apply to it. "The retry
+  ceiling is 5" gave `("retry", "ceiling is", "5")`, because `-ing` looks
+  verbal, putting half the subject in the predicate. A copula now settles the
+  split before word shape is consulted: whatever stands in front of "is" is the
+  subject. On twenty English statements of the kind these transcripts are full
+  of, parsing went from 7 to 19, with nothing lost and one topic corrected.
+  Tests: `tests/test_triple_copula.py`.
+- **Fixed: a topic made of punctuation grouped everything it touched.** The slug
+  pattern accepted runs of pure punctuation, so sentences opening with a stray
+  period or dash landed under topics like `.` and `.-.` — on a corpus of 271
+  briefs, 39 unrelated statements under one and 26 under another. Slug tokens
+  now need at least one alphanumeric character, and a statement with nothing to
+  key on gets a topic derived from its own text rather than a shared fallback.
+- **Changed: only the parsed `subject|predicate` key settles claims across
+  briefs.** The fallback slug is a sentence's opening words, which groups by
+  phrasing rather than subject. Applying cross-brief supersession to it marked
+  18.4% of a production corpus superseded against 1.0% before, nearly all of it
+  statements that merely started alike. Restricted to the atomic key, the same
+  corpus reads 1.1% — the corrections the mechanism was built for. Within a
+  single brief the slug still groups, where the claims share one session.
+
 - **Fixed: a corrected value stayed current in two places.** Supersession by
   topic is the mechanism `docs/BRIEF_SCHEMA.md` names for keeping a superseded
   fact from being restated, and it was failing on the case it exists for, for

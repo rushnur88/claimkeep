@@ -647,6 +647,30 @@ def extract_triple(sentence: str) -> Optional[Tuple[str, str, str]]:
     start = 0
     while start < len(words) and words[start].casefold() in _STOP_HEAD:
         start += 1
+
+    # A copula settles the split on its own, so look for one before guessing
+    # from word shape. Shape alone gets engineering prose wrong in both
+    # directions: "The pinned version is 1.2.3" opens with a participle and was
+    # read as an imperative, returning nothing at all, while "The retry ceiling
+    # is 5" gave ("retry", "ceiling is", "5") because -ing looks like a verb.
+    # When "is" is right there, everything in front of it is the subject
+    # whatever those words look like alone.
+    for index in range(start + 1, min(len(words), start + 9)):
+        if words[index].casefold() not in _AUX:
+            continue
+        end = index + 1
+        while end < len(words) and words[end].casefold() in _AUX:
+            end += 1
+        if end < len(words) and _looks_verbal(words[end]):
+            end += 1
+        if end >= len(words):
+            break  # nothing left to be the object; fall through to the scan
+        return (
+            " ".join(words[start:index]),
+            " ".join(words[index:end]),
+            " ".join(words[end:]),
+        )
+
     for index in range(start, min(len(words) - 1, start + 9)):
         token = words[index]
         if index == start and token.casefold() not in {"i", "we", "my", "our"}:
