@@ -34,6 +34,11 @@ def _now_iso() -> str:
     )
 
 
+# Row kinds that name an author. Anything else in `type` is a row kind, not a
+# speaker, and must not be read as one.
+_AUTHORS = frozenset({"assistant", "user", "human", "system", "tool", "function"})
+
+
 def _extract_text(obj: Dict[str, Any]) -> Optional[str]:
     for key in ("text", "content"):
         value = obj.get(key)
@@ -70,10 +75,44 @@ def _warn(what: str, exc: BaseException = None) -> None:
     print(f"claimkeep: {what}{detail}", file=sys.stderr)
 
 
+def _author(obj: Dict[str, Any]) -> Optional[str]:
+    """Who wrote this row, if it says. `None` means the format carries no author."""
+    message = obj.get("message")
+    if isinstance(message, dict) and isinstance(message.get("role"), str):
+        return message["role"].lower()
+    for key in ("role", "type"):
+        value = obj.get(key)
+        # `type` doubles as a row kind ("progress", "tool_use"); only treat it as
+        # an author when it actually names one.
+        if isinstance(value, str) and value.lower() in _AUTHORS:
+            return value.lower()
+    return None
+
+
+def _is_agent_row(obj: Dict[str, Any]) -> bool:
+    """Keep the agent's own text, and rows whose format states no author.
+
+    A brief is meant to be what the agent established, but the reader used to
+    take any row carrying text: user turns, pasted documents, tool results and
+    injected system blocks all became claims attributed to the agent. On real
+    transcripts the rows carrying `[C:NN%]` split 1318 user to 584 assistant —
+    most "agent claims" had another author. In that deployment the user rows were
+    an injected system prompt whose instructions demonstrate the marker syntax,
+    so the plugin was harvesting "write [C:XX%]" as an established fact.
+
+    Rows with no stated author are kept: that is what the Codex bridge writes
+    (`{"text": ...}`), already filtered to assistant answers upstream. Dropping
+    them would silently empty every brief on that path.
+    """
+    author = _author(obj)
+    return author is None or author == "assistant"
+
+
 def _read_transcript(path: str) -> List[str]:
     units: List[str] = []
     skipped = 0
     total = 0
+    not_agent = 0
     with open(path, "r", encoding="utf-8") as handle:
         for line in handle:
             if not line.strip():
@@ -87,9 +126,16 @@ def _read_transcript(path: str) -> List[str]:
             if not isinstance(obj, dict):
                 skipped += 1
                 continue
+            if not _is_agent_row(obj):
+                not_agent += 1
+                continue
             text = _extract_text(obj)
             if text:
                 units.append(text)
+    # A transcript that is all other authors is not an error, but a transcript
+    # that yields nothing while holding rows is worth one line on stderr.
+    if not units and not_agent:
+        _warn(f"no assistant rows in {path} ({not_agent} rows by another author)")
     # One line, not one per row: a transcript can legitimately hold a few
     # unparsable rows, but a whole file of them means the wrong path was wired.
     if skipped and skipped == total:

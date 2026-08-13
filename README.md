@@ -27,77 +27,80 @@ reconstruct by reasoning, and the parts that turn a resumed session into a re-in
 sessions are short, you will never notice this. If you run long refactors, multi-day debugging, or
 agent pipelines that compact several times a day, you have paid for it repeatedly.
 
-**Against the real control, at equal budget: 17.8% → 35.6% of frozen probes recovered** — on
-transcripts where the agent marks its confidence. Without that convention the same measurement gives
-[+2.7 points](#what-a-fresh-install-gets), and the honest version of this pitch is further down.
+**Against the real control, at equal budget: 21.4% → 39.7% of frozen probes recovered, +18.3
+points** — and on the family built to be unwinnable, 7.3% → 27.3%.
 
 The control is not a simulation. Claude Code writes its own compaction summary to the transcript
-(`compact_boundary`, `isCompactSummary`), so the naive arm was already on disk — 70 real compactions
-across 37 transcripts, 1462 probes frozen before any result was seen. Each arm was given exactly
-the number of characters the native summary spent on that same compaction (median 15,093), because
-an unbounded brief is not a comparison.
+(`compact_boundary`, `isCompactSummary`), so the naive arm was already on disk — 68 real compactions,
+1,481 probes frozen before any result was seen. Each arm was given exactly the number of characters
+the native summary spent on that same compaction, because an unbounded brief is not a comparison.
 
-| score | native summary | ClaimKeep | delta |
-|---|---|---|---|
-| strict | 17.8% | **35.6%** | **+17.8 points** |
-| lenient to the control | 31.5% | 42.7% | +11.2 points |
-
-Roughly a doubling of strict retention. It is not uniform: **45 wins, 13 draws, 12 losses** out of
-70, worst case −28.6 points. Median +11.6, mean +14.6.
-
-By probe family, strict, at equal budget:
+By probe family, at equal budget:
 
 | family | native | ClaimKeep | |
 |---|---|---|---|
-| `path` | 73% | 84% | biased toward the plugin — regex ≈ harvester |
-| `hash` | 58% | 86% | biased toward the plugin |
-| `claim` (marked `[C:NN%]`) | 7% | 39% | the native summary barely carries these |
-| `fact` (bare number + word) | 8% | 19% | **adversarial** — nothing in the plugin targets these |
+| `fact` (bare number + word) | 7.3% | **27.3%** | **adversarial** — nothing in the plugin targets these |
+| `hash` | 57.5% | 82.8% | biased toward the plugin — regex ≈ harvester |
+| `path` | 71.9% | 62.5% | biased toward the plugin, and it still lost ground |
+| `claim` (marked `[C:NN%]`) | 8.2% | 79.0% | excluded from the headline — see below |
 
-The `fact` family was added to be unwinnable by construction: `regex_floor` explicitly skips bare
-numbers and `calibration` needs a marker. The plugin still wins there, but only just.
+Per compaction: **43 wins, 11 draws, 14 losses** out of 68, median +12.5, worst −33.3.
+
+**Why `claim` is excluded.** Counting it, the same run gives 18.0% → 49.7%, +31.7 points. That is the
+bigger number and it is not the one quoted. The harvester scopes a marker to the statement it
+annotates, which is very nearly the string the probe extractor freezes — measured overlap between
+the two, 95%. That family scores whether two regexes agree. Worth knowing, not honest to call
+retention. `path` and `hash` carry a milder form of the same bias, which is why the adversarial
+`fact` family exists and why it is quoted first.
+
+**`path` went down, and the cause is a fix.** While a marker's confidence was applied to a whole
+message, a claim dragged that message's paths in with it. Scoped claims are short and numerous, they
+are packed before the supplement, and at equal budget they now crowd out the `regex_floor` items
+that carry paths. Net across families it is still a clear win; on paths alone the native summary is
+ahead, and the packing order is the obvious thing to revisit.
 
 **The first version of this number was +59 points, and it was wrong three ways.** Matches were
 counted anywhere in the output rather than co-located in one item, so "12" scored inside
 "2026-08-10". The arms were not the same size — the native summary spent 15,093 characters and the
 unbounded brief 3,541,462, a factor of 235. And the path and hash probes were extracted with the
 same class of regex the harvester uses, which is how they reached 100%. Fixing all three took the
-result from +59 to +17.8 and the adversarial family from 74% down to 19%. The unbounded ceiling is
-+49 points; that is an upper bound on the mechanism, not a property of the product, because a brief
-that size cannot be re-injected into the window it exists to restore.
+result from +59 to +17.8. Two harvester defects found in a later audit moved it again, to the table
+above; both are in [CHANGELOG.md](CHANGELOG.md), and any figure published before that audit was
+measured on the defective behaviour.
 
 Limits, since they decide whether the number transfers: one corpus, one agent, so generalisation is
-untested. The transcripts are dense with `[C:NN%]` markers, which a fresh install will not have —
-that cost is measured directly below rather than left as a caveat. The lenient score credits the
-control for paraphrase above a threshold chosen by hand. Full method and per-compaction data:
-`benchmark/`, and the paper below.
+untested. Full method and per-compaction data: `benchmark/`, and the paper below.
 
 ### What a fresh install gets
 
-Markers stripped from the text the harvesters see; probes frozen from the original text so the arms
-stay comparable; three arms in one pass on one package version. The `claim` family is excluded — it
-is marker-defined by construction — so these baselines are not the table above and only compare
-within this block. 68 compactions, 1,104 probes.
+Your transcripts carry no `[C:NN%]` markers, and these do, so the difference is measured rather than
+assumed: markers stripped from the text the harvesters see, probes frozen from the original so the
+arms stay comparable, three arms in one pass. The `claim` family is excluded throughout — it is
+marker-defined by construction. 68 compactions, 1,104 probes.
 
 | arm | overall | `fact` | `hash` | `path` |
 |---|---|---|---|---|
 | native summary | 21.4% | 7.3% | 57.5% | 71.9% |
-| ClaimKeep, markers present | 37.0% | 20.9% | 85.5% | 80.2% |
-| ClaimKeep, markers stripped | 24.1% | 1.9% | 87.6% | 90.6% |
+| ClaimKeep, markers present | 39.7% | 27.3% | 82.8% | 62.5% |
+| ClaimKeep, markers stripped | **47.5%** | 31.1% | 95.7% | 93.8% |
 
-**+15.6 points with markers, +2.7 without — 83% of the lift rides on the convention.** Per
-compaction the marker-free arm is 21 wins, 25 draws, 22 losses, median exactly 0.0, worst −54.5.
+**+18.3 points with markers, +26.1 without.** A marker-free install is not the degraded case here —
+on these families it is the stronger one, 53 wins to 9 losses, median +22.5.
 
-The split matters more than the total. With no markers the whole budget goes to `regex_floor`, so
-paths and hashes survive *better* than in the marked arm. What collapses is prose: bare
-"number + word" facts fall to 1.9%, below the native summary, because a brief made of paths, ids and
-decision lines has nowhere to put them.
+The reason is the budget. Strip the markers and `calibration` produces nothing, so the entire brief
+is `regex_floor` output: paths, ids, decision lines. Those are exactly what the probes in this table
+ask for, and retention goes to 93.8% and 95.7%. Add markers back and 46 claims per compaction take
+their share of the same fixed budget, pushing floor items out — which is why `path` is *lower* with
+markers than without.
 
-So the claim is not "install this and remember more". It is that the plugin makes a marker
-convention pay: without one it is close to a wash, and a clear win only where what you lose in
-compaction is paths, ids and decisions. One limit it cannot escape — the native summary was written
-by a model that could see the markers, and that arm cannot be re-run without them, so if markers
-helped the control, +2.7 is understated.
+So markers do not buy path and id retention; they buy the one thing the floor cannot produce, the
+agent's own statements. Those are the `claim` family in the table above: 8.2% in the native summary
+against 79% here, on probes the floor does not target at all. Whether that trade is worth it depends
+on what your compactions actually cost you — ids and paths, or reasoning and conclusions.
+
+One limit this design cannot escape: the native summary was written by a model that could see the
+markers. That arm cannot be re-run without them, so if markers helped the control, the marker-free
+delta is understated.
 
 Both tables come from one script, on your own sessions:
 

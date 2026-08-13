@@ -84,9 +84,10 @@ class ReservedFieldsAreDocumentedAsReserved(unittest.TestCase):
 
     def test_schema_marks_them_reserved(self):
         here = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        doc = open(
+        with open(
             os.path.join(here, "docs", "BRIEF_SCHEMA.md"), encoding="utf-8"
-        ).read()
+        ) as fh:
+            doc = fh.read()
         self.assertIn("reserved and not produced", doc)
 
     def test_producer_really_does_not_fill_them(self):

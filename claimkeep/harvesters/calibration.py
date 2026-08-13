@@ -54,6 +54,48 @@ def _topic(text: str) -> str:
     return _slug_topic(text)
 
 
+def _confidence(match: "re.Match") -> float:
+    try:
+        return max(0, min(100, int(match.group(1)))) / 100.0
+    except (IndexError, ValueError):
+        return None
+
+
+def _tidy(text: str, marker: "re.Pattern") -> str:
+    """Strip list bullets and the punctuation left behind by the previous split."""
+    return marker.sub("", text).strip().strip("-•*—,;:.)（(").strip()
+
+
+def _scoped_statements(unit: str, marker: "re.Pattern"):
+    """Yield (statement, confidence) — one per marker, scoped to that marker.
+
+    A marker annotates the statement it follows, not the whole message. The old
+    code took the first marker's confidence, stripped every marker, and stored
+    the entire message as one claim. On real transcripts 45% of marked assistant
+    messages carry two or more markers, so nearly half of all claims averaged
+    unrelated facts under one confidence and one topic — and any unmarked aside
+    in the same message inherited that confidence, which is how "this is
+    explicitly not a fact" ended up stored at 90%.
+
+    The statement runs from the previous marker to this one, trimmed to its last
+    non-empty line: a marker ends its own line far more often than it ends a
+    paragraph, and taking the whole span would drag headings and preamble in.
+    Text after the final marker is deliberately dropped — it carries no marker,
+    so it is not a claim.
+    """
+    matches = list(marker.finditer(unit))
+    for index, match in enumerate(matches):
+        before = unit[(matches[index - 1].end() if index else 0) : match.start()]
+        lines = [line for line in before.split("\n") if line.strip()]
+        text = _tidy(lines[-1], marker) if lines else ""
+        if not text:
+            # "[C:80%] the statement" — the marker leads instead of trailing.
+            nxt = matches[index + 1].start() if index + 1 < len(matches) else len(unit)
+            text = _tidy(unit[match.end() : nxt].split("\n", 1)[0], marker)
+        if text:
+            yield text, _confidence(match)
+
+
 class CalibrationHarvester(Harvester):
     name = "calibration"
 
@@ -61,23 +103,16 @@ class CalibrationHarvester(Harvester):
         marker = re.compile(config.calibration_marker_regex)
         claims: List[Claim] = []
         for unit in transcript:
-            match = marker.search(unit)
-            if not match:
-                continue
-            try:
-                confidence = max(0, min(100, int(match.group(1)))) / 100.0
-            except (IndexError, ValueError):
-                confidence = None
-            text = marker.sub("", unit).strip()
-            if not text:
-                continue
-            claims.append(
-                Claim(
-                    text=text,
-                    confidence=confidence,
-                    topic=_topic(text),
-                    source_harvester=self.name,
-                    source_span=unit,
+            for text, confidence in _scoped_statements(unit, marker):
+                claims.append(
+                    Claim(
+                        text=text,
+                        confidence=confidence,
+                        topic=_topic(text),
+                        source_harvester=self.name,
+                        # Provenance stays the message as written, so a reader can
+                        # still see the statement in the context it came from.
+                        source_span=unit,
+                    )
                 )
-            )
         return claims

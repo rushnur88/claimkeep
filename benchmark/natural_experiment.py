@@ -244,7 +244,7 @@ def build_arm(units, budget, cfg, get_harvester):
     return items, "\n".join(items), len(claims), len(supps)
 
 
-def run_file(path, cfg, get_harvester):
+def run_file(path, cfg, get_harvester, is_agent_row):
     with open(path, encoding="utf-8") as f:
         lines = f.readlines()
 
@@ -287,7 +287,11 @@ def run_file(path, cfg, get_harvester):
             t = msg_text(obj)
             if not t:
                 continue
-            units.append(t)
+            # Feed the harvesters exactly what production feeds them. This calls
+            # the shipped filter rather than a copy of it, so the measurement
+            # cannot drift away from the behaviour it is supposed to describe.
+            if is_agent_row(obj):
+                units.append(t)
             if obj.get("type") == "assistant":
                 m = obj.get("message")
                 if isinstance(m, dict) and m.get("role") == "assistant":
@@ -403,12 +407,20 @@ def report(res):
     f = pct(tally(res, "mf_markerfree")[0])
     print("  delta vs control: with markers %+.1f, marker-free %+.1f" % (m - c, f - c))
     if m > c:
-        print("  marker-free keeps %.0f%% of the lift" % ((f - c) / (m - c) * 100))
-    w, d, l, ds = spread(res, "mf_markerfree", "mf_control")
-    print(
-        "  marker-free per compaction: wins %d draws %d losses %d | worst %+.1f median %+.1f"
-        % (w, d, l, ds[0] if ds else 0, statistics.median(ds) if ds else 0)
-    )
+        share = (f - c) / (m - c) * 100
+        print(
+            "  marker-free %s the marked arm (%.0f%% of its lift)"
+            % ("exceeds" if share > 100 else "keeps", share)
+        )
+    for arm, label in (
+        ("mf_marked", "markers present"),
+        ("mf_markerfree", "marker-free   "),
+    ):
+        w, d, l, ds = spread(res, arm, "mf_control")
+        print(
+            "  %s per compaction: wins %d draws %d losses %d | worst %+.1f median %+.1f"
+            % (label, w, d, l, ds[0] if ds else 0, statistics.median(ds) if ds else 0)
+        )
 
     print(
         "\nbrief composition (mean items harvested per compaction, before the budget cut):"
@@ -454,6 +466,7 @@ def main():
     if args.claimkeep_home:
         sys.path.insert(0, os.path.expanduser(args.claimkeep_home))
     try:
+        from claimkeep.cli import _is_agent_row as is_agent_row
         from claimkeep.config import default_config
         from claimkeep.harvesters import get_harvester
     except ImportError:
@@ -473,7 +486,7 @@ def main():
         if done >= args.max_files:
             break
         try:
-            r = run_file(p, cfg, get_harvester)
+            r = run_file(p, cfg, get_harvester, is_agent_row)
         except Exception as e:
             print("ERR %s %r" % (os.path.basename(p), e), file=sys.stderr)
             continue

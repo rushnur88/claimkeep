@@ -20,7 +20,9 @@ class SupplementRenderingTest(unittest.TestCase):
 
     def test_empty_kinds_are_omitted(self):
         brief = Brief(source="s")
-        brief.add_supplement(Supplement(text="379ec48", kind="id", source_harvester="regex_floor"))
+        brief.add_supplement(
+            Supplement(text="379ec48", kind="id", source_harvester="regex_floor")
+        )
         text = render(brief)
         supplement = text.split("## Supplement", 1)[1]
         self.assertIn("### id", supplement)
@@ -42,8 +44,10 @@ class ClaimKeepSmokeTest(unittest.TestCase):
         """
         harvester = CalibrationHarvester()
         config = default_config()
-        for unit in ("Ship on Friday [C:80%]",
-                     "Ship on Friday [C:80%, basis: read the release notes]"):
+        for unit in (
+            "Ship on Friday [C:80%]",
+            "Ship on Friday [C:80%, basis: read the release notes]",
+        ):
             claims = harvester.harvest([unit], config)
             self.assertEqual(len(claims), 1, "not harvested: %r" % unit)
             self.assertEqual(claims[0].confidence, 0.8)
@@ -57,7 +61,9 @@ class ClaimKeepSmokeTest(unittest.TestCase):
         self.assertGreater(len(brief.supplement), 0)
 
     def test_plain_sentence_has_no_floor_supplement(self):
-        supplement = RegexFloorHarvester().harvest(["This is a plain sentence with nothing special."], default_config())
+        supplement = RegexFloorHarvester().harvest(
+            ["This is a plain sentence with nothing special."], default_config()
+        )
         self.assertEqual(supplement, [])
 
     def test_roundtrip_json(self):
@@ -66,8 +72,13 @@ class ClaimKeepSmokeTest(unittest.TestCase):
             supplement=[Supplement("/tmp/ck.json", "path", "regex_floor")],
         )
         parsed = Brief.from_json(brief.to_json())
-        self.assertEqual([c.to_dict() for c in brief.claims], [c.to_dict() for c in parsed.claims])
-        self.assertEqual([s.to_dict() for s in brief.supplement], [s.to_dict() for s in parsed.supplement])
+        self.assertEqual(
+            [c.to_dict() for c in brief.claims], [c.to_dict() for c in parsed.claims]
+        )
+        self.assertEqual(
+            [s.to_dict() for s in brief.supplement],
+            [s.to_dict() for s in parsed.supplement],
+        )
 
     def test_id_determinism_and_punctuation(self):
         a = make_id("regex_floor", "path", " /TMP/ClaimKeep.JSON  ")
@@ -77,7 +88,9 @@ class ClaimKeepSmokeTest(unittest.TestCase):
         self.assertNotEqual(b, c)
 
     def test_calibration_marker(self):
-        claims = CalibrationHarvester().harvest(["Ship Friday [C:80%]"], default_config())
+        claims = CalibrationHarvester().harvest(
+            ["Ship Friday [C:80%]"], default_config()
+        )
         self.assertEqual(len(claims), 1)
         self.assertEqual(claims[0].confidence, 0.8)
         self.assertEqual(claims[0].text, "Ship Friday")
@@ -119,14 +132,22 @@ class ClaimKeepSmokeTest(unittest.TestCase):
 
     def test_postcompact_missing_explicit_brief_is_nonblocking(self):
         result = subprocess.run(
-            [sys.executable, "-m", "claimkeep", "postcompact", "--brief", "/nonexistent.json", "--event", "SessionStart"],
+            [
+                sys.executable,
+                "-m",
+                "claimkeep",
+                "postcompact",
+                "--brief",
+                "/nonexistent.json",
+                "--event",
+                "SessionStart",
+            ],
             check=False,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
         )
         self.assertEqual(result.returncode, 0)
-
 
     def test_redaction_masks_secrets(self):
         from claimkeep.redact import redact
@@ -135,7 +156,10 @@ class ClaimKeepSmokeTest(unittest.TestCase):
         self.assertIn("REDACTED", redact("ghp_ABCDEFGHIJ0123456789ABCDEFGHIJ012345"))
         self.assertIn("REDACTED", redact("AKIAABCDEFGHIJKLMNOP"))
         self.assertNotIn("ABCDEFGHIJ123456", redact("token = ABCDEFGHIJ123456"))
-        self.assertEqual(redact("a normal sentence with no secrets."), "a normal sentence with no secrets.")
+        self.assertEqual(
+            redact("a normal sentence with no secrets."),
+            "a normal sentence with no secrets.",
+        )
 
     def test_redaction_in_build_brief(self):
         from claimkeep.cli import _build_brief
@@ -146,7 +170,6 @@ class ClaimKeepSmokeTest(unittest.TestCase):
             {"agent": "x", "session": "s"},
         )
         self.assertNotIn("sk-abcdEFGH0123456789ijklmnop", brief.to_json())
-
 
     def test_control_treatment_and_probe_log(self):
         import os
@@ -173,7 +196,8 @@ class ClaimKeepSmokeTest(unittest.TestCase):
                 os.environ["CLAIMKEEP_CORPUS_ID"] = "corpusA"
                 try:
                     _probe_log(control, src, "2026-01-01T00:00:00Z")
-                    rec = json.loads(open(logp, encoding="utf-8").read().strip())
+                    with open(logp, encoding="utf-8") as fh:
+                        rec = json.loads(fh.read().strip())
                     self.assertEqual(rec["harvest_enabled"], False)
                     self.assertEqual(rec["corpus_id"], "corpusA")
                     self.assertEqual(rec["session_id"], "s1")

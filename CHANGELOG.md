@@ -2,6 +2,42 @@
 
 ## Unreleased
 
+- **Fixed: a confidence marker applied to the entire message.** `calibration`
+  searched for the first marker, stripped every marker, and stored the whole
+  message as one claim at that first confidence. On 40 real transcripts, 45% of
+  marked assistant messages carry two or more markers, so nearly half of all
+  claims fused unrelated facts under one confidence and one topic — and any
+  unmarked aside in the same message inherited it, which is how a sentence
+  saying "this is explicitly not a fact" was stored at 90%. The fused topic slug
+  also made unrelated statements look like restatements of each other, so
+  supersession fired on facts that had nothing to do with one another. A marker
+  is now scoped to the statement it annotates: one claim per marker, text after
+  the final marker dropped because it carries none. Tests:
+  `tests/test_marker_scope.py`.
+- **Fixed: text the agent never wrote was harvested as the agent's claims.** The
+  transcript reader kept any row containing text, so user turns, pasted
+  documents, tool results and injected system blocks became claims attributed to
+  the agent. On the same transcripts, rows carrying `[C:NN%]` split 1318 user to
+  584 assistant: most "agent claims" had another author. In that deployment the
+  user rows were an injected system prompt whose instructions *demonstrate* the
+  marker syntax, so the plugin was harvesting "write [C:XX%]" as an established
+  fact, at roughly 46 KB per row. Rows are now kept only when they state no
+  author (the Codex bridge's `{"text": ...}`, already filtered upstream) or
+  state the assistant. Tests: `tests/test_author_role.py`.
+- **Changed: the measured numbers, because both defects were inside the
+  measurement too.** Re-run over the same 68 compactions with the harness now
+  calling the shipped author filter instead of a copy: excluding the `claim`
+  family, 21.4% -> 39.7% (was 21.4% -> 37.0%), and the marker-free arm 21.4% ->
+  47.5% (was 24.1%). The marker-free arm went from losing to the marked arm to
+  beating it, because a brief no longer fills with injected system prompt. The
+  `claim` family is now excluded from the headline: with markers scoped
+  correctly, the harvester extracts almost exactly the string the probe
+  extractor freezes (95% overlap measured), so that family scores regex
+  agreement rather than retention. `path` retention fell, 80.2% -> 62.5%, since
+  short scoped claims are packed before the supplement and crowd floor items
+  out at equal budget.
+- **Fixed: two tests left files open** (`test_smoke.py`, `test_empty_diagnosis.py`).
+
 - **Fixed: the read path was partially blind in Russian.** The tokenizer matched
   `[a-z0-9]+`, so Cyrillic text contributed no tokens at all. Measured on 300
   real lesson records (74% Cyrillic): R@1 0.513 -> 0.893, R@10 0.757 -> 0.980,
